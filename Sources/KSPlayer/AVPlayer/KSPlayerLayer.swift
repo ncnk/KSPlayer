@@ -125,7 +125,7 @@ open class KSPlayerLayer: UIView {
                 firstPlayerType = NSClassFromString("KSPlayer.KSMEPlayer") as! MediaPlayerProtocol.Type
                 // swiftlint:enable force_cast
             } else {
-                firstPlayerType = KSOptions.firstPlayerType
+                firstPlayerType = options.firstPlayerType
             }
             if type(of: player) == firstPlayerType {
                 if url == oldValue {
@@ -184,7 +184,7 @@ open class KSPlayerLayer: UIView {
             firstPlayerType = NSClassFromString("KSPlayer.KSMEPlayer") as! MediaPlayerProtocol.Type
             // swiftlint:enable force_cast
         } else {
-            firstPlayerType = KSOptions.firstPlayerType
+            firstPlayerType = options.firstPlayerType
         }
         player = firstPlayerType.init(url: url, options: options)
         isAutoPlay = options.isAutoPlay
@@ -396,7 +396,7 @@ extension KSPlayerLayer: MediaPlayerDelegate {
 
     public func finish(player: some MediaPlayerProtocol, error: Error?) {
         if let error {
-            if type(of: player) != KSOptions.secondPlayerType, let secondPlayerType = KSOptions.secondPlayerType {
+            if type(of: player) != options.secondPlayerType, let secondPlayerType = options.secondPlayerType {
                 self.player = secondPlayerType.init(url: url, options: options)
                 return
             }

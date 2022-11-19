@@ -220,6 +220,10 @@ open class KSOptions {
     public var isAutoPlay = KSOptions.isAutoPlay
     /// seek完是否自动播放
     public var isSeekedAutoPlay = KSOptions.isSeekedAutoPlay
+    
+    public var firstPlayerType = KSOptions.firstPlayerType
+    
+    public var secondPlayerType = KSOptions.secondPlayerType
     /*
      AVSEEK_FLAG_BACKWARD: 1
      AVSEEK_FLAG_BYTE: 2

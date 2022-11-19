@@ -84,6 +84,7 @@ public class KSAVPlayer {
     private var likelyToKeepUpObservation: NSKeyValueObservation?
     private var bufferFullObservation: NSKeyValueObservation?
     private var itemObservation: NSKeyValueObservation?
+    private var isReadyForDisplayObservation: NSKeyValueObservation?
     private var loopCountObservation: NSKeyValueObservation?
     private var loopStatusObservation: NSKeyValueObservation?
     private var error: Error? {
@@ -171,6 +172,11 @@ public class KSAVPlayer {
             guard let self else { return }
             self.observer(playerItem: player.currentItem)
         }
+        isReadyForDisplayObservation = playerLayer.observe(\.isReadyForDisplay, changeHandler: { [weak self] player, _ in
+            guard let self else { return }
+            self.loadState = .playable
+            self.isReadyToPlay = true
+        })
     }
 }
 
@@ -202,8 +208,8 @@ extension KSAVPlayer {
             options.findTime = CACurrentMediaTime()
             let videoTracks = item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.video.rawValue }
             if videoTracks.isEmpty || videoTracks.allSatisfy({ $0.assetTrack?.isPlayable == false }) {
-                error = NSError(errorCode: .videoTracksUnplayable)
-                return
+//                error = NSError(errorCode: .videoTracksUnplayable)
+//                return
             }
             // 默认选择第一个声道
             item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.audio.rawValue }.dropFirst().forEach { $0.isEnabled = false }
@@ -224,15 +230,15 @@ extension KSAVPlayer {
             bufferingProgress = Int(min(loadedTime * 100 / item.preferredForwardBufferDuration, 100))
             if bufferingProgress >= 100 {
                 loadState = .playable
+                playOrPause()
             }
         }
     }
 
     private func playOrPause() {
         if playbackState == .playing {
-            if loadState == .playable {
-                player.play()
-                player.rate = playbackRate
+            if loadState == .playable || (playbackRate > 0 && player.rate != playbackRate) {
+                player.playImmediately(atRate: playbackRate)
             }
         } else {
             player.pause()
@@ -390,6 +396,7 @@ extension KSAVPlayer: MediaPlayerProtocol {
             guard let self else { return }
             self.bufferingProgress = 0
             let playerItem = AVPlayerItem(asset: self.urlAsset)
+            playerItem.preferredForwardBufferDuration = 0
             self.options.openTime = CACurrentMediaTime()
             self.replaceCurrentItem(playerItem: playerItem)
             self.player.actionAtItemEnd = .pause
