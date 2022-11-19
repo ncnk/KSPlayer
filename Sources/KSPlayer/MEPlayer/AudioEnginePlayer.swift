@@ -90,6 +90,7 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
                                   componentFlags: 0,
                                   componentFlagsMask: 0))
     private var currentRenderReadOffset = 0
+    private var sourceNode: AVAudioSourceNode?
     weak var renderSource: OutputRenderSourceDelegate?
     private var currentRender: AudioFrame? {
         didSet {
@@ -125,10 +126,10 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
 
     var volume: Float {
         get {
-            engine.mainMixerNode.volume
+            sourceNode?.volume ?? 1
         }
         set {
-            engine.mainMixerNode.volume = newValue
+            sourceNode?.volume = newValue
         }
     }
 
@@ -156,8 +157,13 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
             self?.audioPlayerShouldInputData(ioData: UnsafeMutableAudioBufferListPointer(audioBufferList), numberOfFrames: frameCount)
             return noErr
         }
+        self.sourceNode = sourceNode
         engine.attach(sourceNode)
         engine.attach(playback)
+//        AVAudioNode *_player;    // member of controller class (for example)
+//        ...
+//        _player = [[AVAudioPlayerNode alloc] init];
+        
         engine.connect(nodes: [sourceNode, dynamicsProcessor, playback, engine.mainMixerNode, engine.outputNode], format: format)
 
         if let audioUnit = engine.outputNode.audioUnit {
