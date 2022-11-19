@@ -59,20 +59,24 @@ public protocol KSPlayerLayerDelegate: AnyObject {
     func player(layer: KSPlayerLayer, currentTime: TimeInterval, totalTime: TimeInterval)
     func player(layer: KSPlayerLayer, finish error: Error?)
     func player(layer: KSPlayerLayer, bufferedCount: Int, consumeTime: TimeInterval)
+    func player(layer: KSPlayerLayer, pipWillStart: AVPictureInPictureController)
+    func player(layer: KSPlayerLayer, pipDidEnd: AVPictureInPictureController)
+}
+
+public extension KSPlayerLayerDelegate {
+    func player(layer: KSPlayerLayer, pipWillStart: AVPictureInPictureController) { }
+    func player(layer: KSPlayerLayer, pipDidEnd: AVPictureInPictureController) { }
 }
 
 open class KSPlayerLayer: UIView {
     public weak var delegate: KSPlayerLayerDelegate?
+    public var pipController: AVPictureInPictureController?
     @Published public var bufferingProgress: Int = 0
     @Published public var loopCount: Int = 0
     @Published public var isPipActive = false {
         didSet {
             if #available(tvOS 14.0, *) {
-                var pipController: AVPictureInPictureController?
-                if let controller = KSOptions.pipController as? AVPictureInPictureController, controller.delegate === self {
-                    pipController = controller
-                } else {
-                    KSOptions.pipController = nil
+                if pipController == nil {
                     pipController = player.pipController()
                 }
                 if let pipController,
@@ -81,13 +85,11 @@ open class KSPlayerLayer: UIView {
                     if pipController.isPictureInPictureActive {
                         pipController.stopPictureInPicture()
                         pipController.delegate = nil
-                        KSOptions.pipController = nil
                     } else {
                         DispatchQueue.main.async { [weak self] in
                             guard let self else { return }
-                            pipController.startPictureInPicture()
                             pipController.delegate = self
-                            KSOptions.pipController = pipController
+                            pipController.startPictureInPicture()
                         }
                     }
                 }
@@ -272,6 +274,7 @@ open class KSPlayerLayer: UIView {
 
     public func resetPlayer() {
         KSLog("resetPlayer")
+        pipController = nil
         state = .prepareToPlay
         bufferedCount = 0
         shouldSeekTo = 0
@@ -371,6 +374,9 @@ extension KSPlayerLayer: MediaPlayerDelegate {
         }
         guard state.isPlaying else { return }
         if player.loadState == .playable {
+            if pipController == nil {
+                pipController = player.pipController()
+            }
             state = .bufferFinished
         } else {
             if state == .bufferFinished {
@@ -414,8 +420,13 @@ extension KSPlayerLayer: MediaPlayerDelegate {
 
 @available(tvOS 14.0, *)
 extension KSPlayerLayer: AVPictureInPictureControllerDelegate {
-    public func pictureInPictureControllerDidStopPictureInPicture(_: AVPictureInPictureController) {
+    
+    public func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        delegate?.player(layer: self, pipWillStart: pictureInPictureController)
+    }
+    public func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         isPipActive = false
+        delegate?.player(layer: self, pipDidEnd: pictureInPictureController)
     }
 }
 
