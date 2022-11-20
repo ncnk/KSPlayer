@@ -606,7 +606,7 @@ extension KSPlayerLayer {
     }
 
     @objc private func enterBackground() {
-        guard state.isPlaying, !player.isExternalPlaybackActive, !isPipActive else {
+        guard state.isPlaying, !player.isExternalPlaybackActive, !isPipActive, !(pipController?.isPictureInPictureActive ?? false) else {
             return
         }
 
