@@ -202,19 +202,40 @@ extension KSAVPlayer {
         }
         delegate?.finish(player: self, error: playError)
     }
+    
+    private func isAirplaying() -> Bool {
+        var isAirplaying = false
+        let audioSession = AVAudioSession.sharedInstance()
+        let route = audioSession.currentRoute
+        let array = route.outputs
+        for output in route.outputs {
+            if output.portType == .airPlay {
+                isAirplaying = true
+                break
+            }
+        }
+        return isAirplaying
+    }
 
     private func updateStatus(item: AVPlayerItem) {
         if item.status == .readyToPlay {
             options.findTime = CACurrentMediaTime()
-            let videoTracks = item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.video.rawValue }
-            if videoTracks.isEmpty || videoTracks.allSatisfy({ $0.assetTrack?.isPlayable == false }) {
-//                error = NSError(errorCode: .videoTracksUnplayable)
-//                return
+
+            if isAirplaying() {
+                duration = item.duration.seconds
+                isReadyToPlay = true
             }
-            // 默认选择第一个声道
-            item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.audio.rawValue }.dropFirst().forEach { $0.isEnabled = false }
-            duration = item.duration.seconds
-            isReadyToPlay = true
+            else {
+                let videoTracks = item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.video.rawValue }
+                if videoTracks.isEmpty || videoTracks.allSatisfy({ $0.assetTrack?.isPlayable == false }) {
+                    error = NSError(errorCode: .videoTracksUnplayable)
+                    return
+                }
+                // 默认选择第一个声道
+                item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.audio.rawValue }.dropFirst().forEach { $0.isEnabled = false }
+                duration = item.duration.seconds
+                isReadyToPlay = true
+            }
         } else if item.status == .failed {
             error = item.error
         }
@@ -228,6 +249,14 @@ extension KSAVPlayer {
             let loadedTime = playableTime - currentPlaybackTime
             guard loadedTime > 0 else { return }
             bufferingProgress = Int(min(loadedTime * 100 / item.preferredForwardBufferDuration, 100))
+            if !isAirplaying() {
+                let videoTracks = item.tracks.filter { $0.assetTrack?.mediaType.rawValue == AVMediaType.video.rawValue }
+                if videoTracks.isEmpty || videoTracks.allSatisfy({ $0.assetTrack?.isPlayable == false }) {
+                    shutdown()
+                    error = NSError(errorCode: .videoTracksUnplayable)
+                    return
+                }
+            }
             if bufferingProgress >= 100 {
                 loadState = .playable
                 playOrPause()
