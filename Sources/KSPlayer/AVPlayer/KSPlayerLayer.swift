@@ -726,12 +726,8 @@ extension Bundle {
 
 public struct KSVideoPlayer {
     public let coordinator: Coordinator
-    private let url: URL
-    public let options: KSOptions
-    public init(url: URL, options: KSOptions) {
-        self.options = options
-        self.url = url
-        coordinator = Coordinator(isPlay: options.isAutoPlay)
+    public init(coordinator: Coordinator) {
+        self.coordinator = coordinator
     }
 }
 
@@ -747,7 +743,7 @@ extension KSVideoPlayer: UIViewRepresentable {
     #if canImport(UIKit)
     public typealias UIViewType = KSPlayerLayer
     public func makeUIView(context: Context) -> UIViewType {
-        let view = makeView(context: context)
+        let view = context.coordinator.makeView()
         let swipeDown = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipeGestureAction(_:)))
         swipeDown.direction = .down
         view.addGestureRecognizer(swipeDown)
@@ -767,12 +763,15 @@ extension KSVideoPlayer: UIViewRepresentable {
         updateView(uiView, context: context)
     }
 
-    // 在iOS，第二次进入会先调用makeUIView。然后在调用之前的dismantleUIView. 所以用weak来做自动回收。
-    public static func dismantleUIView(_: UIViewType, coordinator _: Coordinator) {}
+    public static func dismantleUIView(_: UIViewType, coordinator: Coordinator) {
+        #if os(tvOS)
+        coordinator.playerLayer = nil
+        #endif
+    }
     #else
     public typealias NSViewType = KSPlayerLayer
     public func makeNSView(context: Context) -> NSViewType {
-        makeView(context: context)
+        context.coordinator.makeView()
     }
 
     public func updateNSView(_ uiView: NSViewType, context: Context) {
@@ -781,22 +780,12 @@ extension KSVideoPlayer: UIViewRepresentable {
 
     public static func dismantleNSView(_: NSViewType, coordinator _: Coordinator) {}
     #endif
-    private func makeView(context: Context) -> KSPlayerLayer {
-        if let playerLayer = context.coordinator.playerLayer {
-            playerLayer.set(url: url, options: options)
-            playerLayer.delegate = context.coordinator
-            return playerLayer
-        } else {
-            let playerLayer = KSPlayerLayer(url: url, options: options)
-            playerLayer.delegate = context.coordinator
-            context.coordinator.playerLayer = playerLayer
-            return playerLayer
-        }
-    }
 
     private func updateView(_: KSPlayerLayer, context _: Context) {}
 
     public final class Coordinator: ObservableObject {
+        public var url: URL
+        public var options: KSOptions
         @Published public var isPlay: Bool {
             didSet {
                 isPlay ? playerLayer?.play() : playerLayer?.pause()
@@ -853,7 +842,8 @@ extension KSVideoPlayer: UIViewRepresentable {
             }
         }
 
-        public weak var playerLayer: KSPlayerLayer?
+        // 在SplitView模式下，第二次进入会先调用makeUIView。然后在调用之前的dismantleUIView.所以如果进入的是同一个View的话，就会导致playerLayer被清空了。最准确的方式是在onDisappear清空playerLayer
+        public var playerLayer: KSPlayerLayer?
         public var audioTracks = [MediaPlayerTrack]()
         public var subtitleTracks = [MediaPlayerTrack]()
         public var videoTracks = [MediaPlayerTrack]()
@@ -867,8 +857,24 @@ extension KSVideoPlayer: UIViewRepresentable {
             onSwipe?(recognizer.direction)
         }
         #endif
-        init(isPlay: Bool) {
-            self.isPlay = isPlay
+
+        public init(url: URL, options: KSOptions) {
+            self.url = url
+            self.options = options
+            isPlay = options.isAutoPlay
+        }
+
+        public func makeView() -> KSPlayerLayer {
+            if let playerLayer {
+                playerLayer.set(url: url, options: options)
+                playerLayer.delegate = self
+                return playerLayer
+            } else {
+                let playerLayer = KSPlayerLayer(url: url, options: options)
+                playerLayer.delegate = self
+                self.playerLayer = playerLayer
+                return playerLayer
+            }
         }
 
         public func skip(interval: Int) {
@@ -908,6 +914,18 @@ extension KSVideoPlayer.Coordinator: KSPlayerLayerDelegate {
 
     public func player(layer _: KSPlayerLayer, bufferedCount: Int, consumeTime: TimeInterval) {
         onBufferChanged?(bufferedCount, consumeTime)
+    }
+}
+
+extension KSVideoPlayer.Coordinator: Equatable {
+    public static func == (lhs: KSVideoPlayer.Coordinator, rhs: KSVideoPlayer.Coordinator) -> Bool {
+        lhs.url == rhs.url
+    }
+}
+
+extension KSVideoPlayer: Equatable {
+    public static func == (lhs: KSVideoPlayer, rhs: KSVideoPlayer) -> Bool {
+        lhs.coordinator == rhs.coordinator
     }
 }
 
