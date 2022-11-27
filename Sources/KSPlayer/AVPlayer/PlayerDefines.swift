@@ -155,6 +155,37 @@ public enum DynamicRange: Int32 {
     case DOVI = 5
 }
 
+extension DynamicRange {
+    var colorPrimaries: CFString {
+        switch self {
+        case .SDR:
+            return kCVImageBufferColorPrimaries_ITU_R_709_2
+        case .HDR, .HLG, .DOVI:
+            return kCVImageBufferColorPrimaries_ITU_R_2020
+        }
+    }
+
+    var transferFunction: CFString {
+        switch self {
+        case .SDR:
+            return kCVImageBufferTransferFunction_ITU_R_709_2
+        case .HDR:
+            return kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ
+        case .HLG, .DOVI:
+            return kCVImageBufferTransferFunction_ITU_R_2100_HLG
+        }
+    }
+
+    var yCbCrMatrix: CFString {
+        switch self {
+        case .SDR:
+            return kCVImageBufferYCbCrMatrix_ITU_R_709_2
+        case .HDR, .HLG, .DOVI:
+            return kCVImageBufferYCbCrMatrix_ITU_R_2020
+        }
+    }
+}
+
 public struct DOVIDecoderConfigurationRecord {
     // swiftlint:disable identifier_name
     let dv_version_major: UInt8
@@ -255,6 +286,8 @@ open class KSOptions {
     public var asynchronousDecompression = true
     public var autoDeInterlace = false
     public var startPlayTime: TimeInterval?
+    public var isHDRToSDR = false
+    public var destinationDynamicRange: DynamicRange?
     @Published var preferredFramesPerSecond = Float(60)
     public internal(set) var formatName = ""
     public internal(set) var prepareTime = 0.0
@@ -467,34 +500,6 @@ open class KSOptions {
         nil
     }
     #endif
-
-    static func colorSpace(ycbcrMatrix: CFString?, transferFunction: CFString?) -> CGColorSpace? {
-        switch ycbcrMatrix {
-        case kCVImageBufferYCbCrMatrix_ITU_R_709_2:
-            return CGColorSpace(name: CGColorSpace.itur_709)
-        case kCVImageBufferYCbCrMatrix_ITU_R_601_4:
-            return CGColorSpace(name: CGColorSpace.sRGB)
-        case kCVImageBufferYCbCrMatrix_ITU_R_2020:
-            if transferFunction == kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ {
-                if #available(macOS 11.0, iOS 14.0, tvOS 14.0, *) {
-                    return CGColorSpace(name: CGColorSpace.itur_2100_PQ)
-                } else {
-                    return CGColorSpace(name: CGColorSpace.itur_2020)
-                }
-            } else if transferFunction == kCVImageBufferTransferFunction_ITU_R_2100_HLG {
-                if #available(macOS 11.0, iOS 14.0, tvOS 14.0, *) {
-                    return CGColorSpace(name: CGColorSpace.itur_2100_HLG)
-                } else {
-                    return CGColorSpace(name: CGColorSpace.itur_2020)
-                }
-            } else {
-                return CGColorSpace(name: CGColorSpace.itur_2020)
-            }
-
-        default:
-            return nil
-        }
-    }
 }
 
 // 缓冲情况
@@ -519,6 +524,8 @@ public struct LoadingState {
 }
 
 public extension KSOptions {
+    static var firstPlayerType: MediaPlayerProtocol.Type = KSAVPlayer.self
+    static var secondPlayerType: MediaPlayerProtocol.Type?
     /// 最低缓存视频时间
     static var preferredForwardBufferDuration = 3.0
     /// 最大缓存视频时间
@@ -533,7 +540,6 @@ public extension KSOptions {
     static var isAutoPlay = false
     /// seek完是否自动播放
     static var isSeekedAutoPlay = true
-    static var isClearVideoWhereReplace = true
     static var enableMaxOutputChannels = true
     static var pipController: Any?
     /// 日志输出方式
@@ -722,94 +728,6 @@ public func runInMainqueue(block: @escaping () -> Void) {
     }
 }
 
-extension UIView {
-    var widthConstraint: NSLayoutConstraint? {
-        // 防止返回NSContentSizeLayoutConstraint
-        constraints.first { $0.isMember(of: NSLayoutConstraint.self) && $0.firstAttribute == .width }
-    }
-
-    var heightConstraint: NSLayoutConstraint? {
-        // 防止返回NSContentSizeLayoutConstraint
-        constraints.first { $0.isMember(of: NSLayoutConstraint.self) && $0.firstAttribute == .height }
-    }
-
-    var trailingConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .trailing }
-    }
-
-    var leadingConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .leading }
-    }
-
-    var topConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .top }
-    }
-
-    var bottomConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .bottom }
-    }
-
-    var centerXConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .centerX }
-    }
-
-    var centerYConstraint: NSLayoutConstraint? {
-        superview?.constraints.first { $0.firstItem === self && $0.firstAttribute == .centerY }
-    }
-
-    var frameConstraints: [NSLayoutConstraint] {
-        var frameConstraint = superview?.constraints.filter { constraint in
-            constraint.firstItem === self
-        } ?? [NSLayoutConstraint]()
-        for constraint in constraints where
-            constraint.isMember(of: NSLayoutConstraint.self) && constraint.firstItem === self && (constraint.firstAttribute == .width || constraint.firstAttribute == .height)
-        {
-            frameConstraint.append(constraint)
-        }
-        return frameConstraint
-    }
-
-    var safeTopAnchor: NSLayoutYAxisAnchor {
-        if #available(macOS 11.0, *) {
-            return self.safeAreaLayoutGuide.topAnchor
-        } else {
-            return topAnchor
-        }
-    }
-
-    var readableTopAnchor: NSLayoutYAxisAnchor {
-        #if os(macOS)
-        topAnchor
-        #else
-        readableContentGuide.topAnchor
-        #endif
-    }
-
-    var safeLeadingAnchor: NSLayoutXAxisAnchor {
-        if #available(macOS 11.0, *) {
-            return self.safeAreaLayoutGuide.leadingAnchor
-        } else {
-            return leadingAnchor
-        }
-    }
-
-    var safeTrailingAnchor: NSLayoutXAxisAnchor {
-        if #available(macOS 11.0, *) {
-            return self.safeAreaLayoutGuide.trailingAnchor
-        } else {
-            return trailingAnchor
-        }
-    }
-
-    var safeBottomAnchor: NSLayoutYAxisAnchor {
-        if #available(macOS 11.0, *) {
-            return self.safeAreaLayoutGuide.bottomAnchor
-        } else {
-            return bottomAnchor
-        }
-    }
-}
-
 public extension URL {
     var isMovie: Bool {
         if let typeID = try? resourceValues(forKeys: [.typeIdentifierKey]).typeIdentifier as CFString? {
@@ -823,5 +741,62 @@ public extension URL {
             return UTTypeConformsTo(typeID, kUTTypeAudio)
         }
         return false
+    }
+}
+
+#if !SWIFT_PACKAGE
+extension Bundle {
+    static let module = Bundle(for: KSPlayerLayer.self).path(forResource: "KSPlayer_KSPlayer", ofType: "bundle").flatMap { Bundle(path: $0) } ?? Bundle.main
+}
+#endif
+
+public enum TimeType {
+    case min
+    case hour
+    case minOrHour
+    case millisecond
+}
+
+public extension TimeInterval {
+    func toString(for type: TimeType) -> String {
+        Int(ceil(self)).toString(for: type)
+    }
+}
+
+public extension Int {
+    func toString(for type: TimeType) -> String {
+        var second = self
+        var min = second / 60
+        second -= min * 60
+        switch type {
+        case .min:
+            return String(format: "%02d:%02d", min, second)
+        case .hour:
+            let hour = min / 60
+            min -= hour * 60
+            return String(format: "%d:%02d:%02d", hour, min, second)
+        case .minOrHour:
+            let hour = min / 60
+            if hour > 0 {
+                min -= hour * 60
+                return String(format: "%d:%02d:%02d", hour, min, second)
+            } else {
+                return String(format: "%02d:%02d", min, second)
+            }
+        case .millisecond:
+            var time = self * 100
+            let millisecond = time % 100
+            time /= 100
+            let sec = time % 60
+            time /= 60
+            let min = time % 60
+            time /= 60
+            let hour = time % 60
+            if hour > 0 {
+                return String(format: "%d:%02d:%02d.%02d", hour, min, sec, millisecond)
+            } else {
+                return String(format: "%02d:%02d.%02d", min, sec, millisecond)
+            }
+        }
     }
 }

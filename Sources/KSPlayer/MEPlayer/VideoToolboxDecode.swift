@@ -187,6 +187,18 @@ class DecompressionSession {
         guard status == noErr, let decompressionSession = session else {
             return nil
         }
+        if #available(iOS 14.0, tvOS 14.0, macOS 11.0, *) {
+            VTSessionSetProperty(decompressionSession, key: kVTDecompressionPropertyKey_PropagatePerFrameHDRDisplayMetadata,
+                                 value: kCFBooleanTrue)
+        }
+        if let destinationDynamicRange = options.destinationDynamicRange {
+            let pixelTransferProperties = [kVTPixelTransferPropertyKey_DestinationColorPrimaries: destinationDynamicRange.colorPrimaries,
+                                           kVTPixelTransferPropertyKey_DestinationTransferFunction: destinationDynamicRange.transferFunction,
+                                           kVTPixelTransferPropertyKey_DestinationYCbCrMatrix: destinationDynamicRange.yCbCrMatrix]
+            VTSessionSetProperty(decompressionSession,
+                                 key: kVTDecompressionPropertyKey_PixelTransferProperties,
+                                 value: pixelTransferProperties as CFDictionary)
+        }
         self.decompressionSession = decompressionSession
     }
 

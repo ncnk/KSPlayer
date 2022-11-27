@@ -36,7 +36,23 @@ class VideoSwresample: Swresample {
         } else {
             frame.corePixelBuffer = transfer(frame: avframe.pointee)
         }
+        if let sideData = avframe.pointee.side_data?.pointee?.pointee {
+            if sideData.type == AV_FRAME_DATA_DOVI_RPU_BUFFER {
+                let rpuBuff = sideData.data.withMemoryRebound(to: [UInt8].self, capacity: 1) { $0 }
 
+            } else if sideData.type == AV_FRAME_DATA_DOVI_METADATA { // AVDOVIMetadata
+                let doviMeta = sideData.data.withMemoryRebound(to: AVDOVIMetadata.self, capacity: 1) { $0 }
+                let header = av_dovi_get_header(doviMeta)
+                let mapping = av_dovi_get_mapping(doviMeta)
+                let color = av_dovi_get_color(doviMeta)
+
+            } else if sideData.type == AV_FRAME_DATA_DYNAMIC_HDR_PLUS { // AVDynamicHDRPlus
+                let hdrPlus = sideData.data.withMemoryRebound(to: AVDynamicHDRPlus.self, capacity: 1) { $0 }.pointee
+
+            } else if sideData.type == AV_FRAME_DATA_DYNAMIC_HDR_VIVID { // AVDynamicHDRVivid
+                let hdrVivid = sideData.data.withMemoryRebound(to: AVDynamicHDRVivid.self, capacity: 1) { $0 }.pointee
+            }
+        }
         if let pixelBuffer = frame.corePixelBuffer {
             pixelBuffer.colorspace = KSOptions.colorSpace(ycbcrMatrix: pixelBuffer.yCbCrMatrix, transferFunction: pixelBuffer.transferFunction)
         }
@@ -220,7 +236,7 @@ class AudioSwresample: Swresample {
     private let channels: Int32
     init(codecpar: AVCodecParameters) {
         descriptor = AudioDescriptor(codecpar: codecpar)
-        channels = Int32(max(min(KSOptions.channelLayout.channelCount, descriptor.inputNumberOfChannels), 1))
+        channels = Int32(max(KSOptions.channelLayout.channelCount, 1))
         _ = setup(descriptor: descriptor)
     }
 

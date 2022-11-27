@@ -9,26 +9,24 @@ import AVKit
 import SwiftUI
 @available(iOS 15, tvOS 15, macOS 12, *)
 public struct KSVideoPlayerView: View {
-    @ObservedObject public var subtitleModel = SubtitleModel()
+    @StateObject public var subtitleModel = SubtitleModel()
     @State private var model = ControllerTimeModel()
-    public let playerCoordinator: KSVideoPlayer.Coordinator
+    @StateObject public var playerCoordinator = KSVideoPlayer.Coordinator()
     @State var isMaskShow = true
-
-    public init(playerCoordinator: KSVideoPlayer.Coordinator) {
-        self.playerCoordinator = playerCoordinator
-    }
-
+    @State public var url: URL
+    public let options: KSOptions
     public init(url: URL, options: KSOptions) {
-        playerCoordinator = KSVideoPlayer.Coordinator(url: url, options: options)
+        _url = .init(initialValue: url)
+        self.options = options
     }
 
     public var body: some View {
         ZStack {
-            KSVideoPlayer(coordinator: playerCoordinator).onPlay { current, total in
+            KSVideoPlayer(coordinator: playerCoordinator, url: url, options: options).onPlay { current, total in
                 model.currentTime = Int(current)
                 model.totalTime = Int(max(max(0, total), current))
                 if let subtile = subtitleModel.selectedSubtitle {
-                    let time = current + playerCoordinator.options.subtitleDelay
+                    let time = current + options.subtitleDelay
                     if let part = subtile.search(for: time) {
                         subtitleModel.endTime = part.end
                         if let image = part.image {
@@ -93,15 +91,13 @@ public struct KSVideoPlayerView: View {
                 if let playerLayer = playerCoordinator.playerLayer {
                     if !playerLayer.isPipActive {
                         playerCoordinator.playerLayer?.pause()
-                        #if !os(tvOS)
                         playerCoordinator.playerLayer = nil
-                        #endif
                     }
                 }
             }
             .edgesIgnoringSafeArea(.all)
-            VideoSubtitleView()
-            VideoControllerView()
+            VideoSubtitleView(model: subtitleModel)
+            VideoControllerView(config: playerCoordinator)
             #if !os(iOS)
                 .onMoveCommand { direction in
                     isMaskShow = true
@@ -124,14 +120,12 @@ public struct KSVideoPlayerView: View {
                 .opacity(isMaskShow ? 1 : 0)
             // 设置opacity为0，还是会去更新View。所以只能这样了
             if isMaskShow {
-                VideoTimeShowView(model: $model)
+                VideoTimeShowView(config: playerCoordinator, model: $model)
             }
         }
         .preferredColorScheme(.dark)
-        .environmentObject(subtitleModel)
-        .environmentObject(playerCoordinator)
         #if os(macOS)
-            .navigationTitle(playerCoordinator.url.lastPathComponent)
+            .navigationTitle(url.lastPathComponent)
             .onTapGesture(count: 2) {
                 NSApplication.shared.keyWindow?.toggleFullScreen(self)
             }
@@ -152,7 +146,7 @@ public struct KSVideoPlayerView: View {
 
     public func openURL(_ url: URL) {
         if url.isAudio || url.isMovie {
-            playerCoordinator.playerLayer?.set(url: url, options: playerCoordinator.options)
+            self.url = url
         } else {
             let info = URLSubtitleInfo(subtitleID: url.path, name: url.lastPathComponent)
             info.downloadURL = url
@@ -166,7 +160,7 @@ public struct KSVideoPlayerView: View {
 @available(iOS 15, tvOS 15, macOS 12, *)
 extension KSVideoPlayerView: Equatable {
     public static func == (lhs: KSVideoPlayerView, rhs: KSVideoPlayerView) -> Bool {
-        lhs.playerCoordinator == rhs.playerCoordinator
+        lhs.url == rhs.url
     }
 }
 
@@ -179,7 +173,7 @@ struct ControllerTimeModel {
 
 @available(iOS 15, tvOS 15, macOS 12, *)
 struct VideoControllerView: View {
-    @EnvironmentObject fileprivate var config: KSVideoPlayer.Coordinator
+    @StateObject fileprivate var config: KSVideoPlayer.Coordinator
     @Environment(\.dismiss) private var dismiss
     @State private var isShowSetting = false
     public var body: some View {
@@ -261,7 +255,7 @@ struct VideoControllerView: View {
         }
         .padding()
         .sheet(isPresented: $isShowSetting) {
-            VideoSettingView()
+            VideoSettingView(config: config)
         }
         .foregroundColor(.white)
         #if os(tvOS)
@@ -274,7 +268,7 @@ struct VideoControllerView: View {
 
 @available(iOS 15, tvOS 15, macOS 12, *)
 struct VideoTimeShowView: View {
-    @EnvironmentObject fileprivate var config: KSVideoPlayer.Coordinator
+    @StateObject fileprivate var config: KSVideoPlayer.Coordinator
     @Binding fileprivate var model: ControllerTimeModel
     public var body: some View {
         VStack {
@@ -318,7 +312,7 @@ public class SubtitleModel: ObservableObject {
 
 @available(iOS 15, tvOS 15, macOS 12, *)
 struct VideoSubtitleView: View {
-    @EnvironmentObject fileprivate var model: SubtitleModel
+    @StateObject fileprivate var model: SubtitleModel
     var body: some View {
         VStack {
             Spacer()
@@ -349,7 +343,7 @@ struct VideoSettingView: View {
     @State private var presentSubtileDelayAlert = false
     @State private var presentSubtileDelay = ""
     @EnvironmentObject private var subtitleModel: SubtitleModel
-    @EnvironmentObject private var config: KSVideoPlayer.Coordinator
+    @StateObject fileprivate var config: KSVideoPlayer.Coordinator
     var body: some View {
         config.selectedAudioTrack = (config.playerLayer?.player.isMuted ?? false) ? nil : config.audioTracks.first { $0.isEnabled }
         config.selectedVideoTrack = config.videoTracks.first { $0.isEnabled }

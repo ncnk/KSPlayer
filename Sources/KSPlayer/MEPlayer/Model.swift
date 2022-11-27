@@ -88,18 +88,56 @@ public enum LogLevel: Int32 {
     case trace = 56
 }
 
+// for MEPlayer
 public extension KSOptions {
     /// 开启VR模式的陀飞轮
     static var enableSensor = true
     /// 日志级别
     static var logLevel = LogLevel.warning
     static var stackSize = 32768
-    static var channelLayout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Stereo)!
+    static var isClearVideoWhereReplace = true
+    internal static var channelLayout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Stereo)!
     #if os(macOS)
     internal static var audioPlayerSampleRate = Int32(44100)
     #else
     internal static var audioPlayerSampleRate = Int32(AVAudioSession.sharedInstance().sampleRate)
     #endif
+
+    static func colorSpace(ycbcrMatrix: CFString?, transferFunction: CFString?) -> CGColorSpace? {
+        switch ycbcrMatrix {
+        case kCVImageBufferYCbCrMatrix_ITU_R_709_2:
+            return CGColorSpace(name: CGColorSpace.itur_709)
+        case kCVImageBufferYCbCrMatrix_ITU_R_601_4:
+            return CGColorSpace(name: CGColorSpace.sRGB)
+        case kCVImageBufferYCbCrMatrix_ITU_R_2020:
+            if transferFunction == kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ {
+                if #available(macOS 11.0, iOS 14.0, tvOS 14.0, *) {
+                    return CGColorSpace(name: CGColorSpace.itur_2100_PQ)
+                } else {
+                    return CGColorSpace(name: CGColorSpace.itur_2020)
+                }
+            } else if transferFunction == kCVImageBufferTransferFunction_ITU_R_2100_HLG {
+                if #available(macOS 11.0, iOS 14.0, tvOS 14.0, *) {
+                    return CGColorSpace(name: CGColorSpace.itur_2100_HLG)
+                } else {
+                    return CGColorSpace(name: CGColorSpace.itur_2020)
+                }
+            } else {
+                return CGColorSpace(name: CGColorSpace.itur_2020)
+            }
+
+        default:
+            return nil
+        }
+    }
+
+    static func colorPixelFormat(bitDepth: Int32) -> MTLPixelFormat {
+        if bitDepth == 10 {
+            return .bgr10a2Unorm
+        } else {
+            return .bgra8Unorm
+        }
+    }
 }
 
 enum MECodecState {
