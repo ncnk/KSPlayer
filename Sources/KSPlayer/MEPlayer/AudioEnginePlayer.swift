@@ -148,9 +148,7 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
         var format = engine.outputNode.outputFormat(forBus: 0)
         KSOptions.audioPlayerSampleRate = Int32(format.sampleRate)
         if let audioUnit = engine.outputNode.audioUnit {
-            if var layout = setupLayout(audioUnit: audioUnit) {
-                KSOptions.channelLayout = AVAudioChannelLayout(layout: &layout)
-            }
+            KSOptions.channelLayout = AVAudioChannelLayout(layout: setupLayout(audioUnit: audioUnit))
         }
         if KSOptions.channelLayout != format.channelLayout {
             format = AVAudioFormat(commonFormat: format.commonFormat, sampleRate: format.sampleRate, interleaved: format.isInterleaved, channelLayout: KSOptions.channelLayout)
@@ -177,27 +175,29 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
         engine.prepare()
     }
 
-    private func setupLayout(audioUnit: AudioUnit) -> AudioChannelLayout? {
-        var layout: AudioChannelLayout?
+    private func setupLayout(audioUnit: AudioUnit) -> UnsafeMutablePointer<AudioChannelLayout> {
         var size = UInt32(0)
         AudioUnitGetPropertyInfo(audioUnit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, &size, nil)
-        AudioUnitGetProperty(audioUnit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, &layout, &size)
-        guard var layout else {
-            return nil
-        }
-        var tag = layout.mChannelLayoutTag
-        guard tag != kAudioChannelLayoutTag_UseChannelBitmap else {
+        let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
+        AudioUnitGetProperty(audioUnit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, data, &size)
+        let layout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
+        let tag = layout.pointee.mChannelLayoutTag
+        guard tag != kAudioChannelLayoutTag_UseChannelDescriptions else {
             return layout
         }
-        var newLayout: AudioChannelLayout?
+        let newLayout: UnsafeMutablePointer<AudioChannelLayout>
         if tag == kAudioChannelLayoutTag_UseChannelBitmap {
-            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<UInt32>.size), &(layout.mChannelBitmap), &size)
-            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<UInt32>.size), &(layout.mChannelBitmap), &size, &newLayout)
+            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelBitmap>.size), &layout.pointee.mChannelBitmap, &size)
+            let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
+            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelBitmap>.size), &layout.pointee.mChannelBitmap, &size, data)
+            newLayout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
         } else {
-            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &tag, &size)
-            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &tag, &size, &newLayout)
+            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForTag, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &layout.pointee.mChannelLayoutTag, &size)
+            let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
+            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForTag, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &layout.pointee.mChannelLayoutTag, &size, data)
+            newLayout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
         }
-        newLayout?.mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions
+        newLayout.pointee.mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions
         return newLayout
     }
 
