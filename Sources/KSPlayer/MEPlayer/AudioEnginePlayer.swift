@@ -82,7 +82,8 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
 //    private let nbandEQ = AVAudioUnitEQ()
 //    private let distortion = AVAudioUnitDistortion()
 //    private let delay = AVAudioUnitDelay()
-    private let playback = AVAudioUnitVarispeed()
+//    private let playback = AVAudioUnitVarispeed()
+    private let timePitch = AVAudioUnitTimePitch()
     private let dynamicsProcessor = AVAudioUnitEffect(audioComponentDescription:
         AudioComponentDescription(componentType: kAudioUnitType_Effect,
                                   componentSubType: kAudioUnitSubType_DynamicsProcessor,
@@ -117,10 +118,10 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
 
     var playbackRate: Float {
         get {
-            playback.rate
+            timePitch.rate
         }
         set {
-            playback.rate = min(2, max(0.5, newValue))
+            timePitch.rate = min(2, max(0.5, newValue))
         }
     }
 
@@ -162,12 +163,10 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
         }
         self.sourceNode = sourceNode
         engine.attach(sourceNode)
-        engine.attach(playback)
-//        AVAudioNode *_player;    // member of controller class (for example)
-//        ...
-//        _player = [[AVAudioPlayerNode alloc] init];
-        
-        engine.connect(nodes: [sourceNode, dynamicsProcessor, playback, engine.mainMixerNode, engine.outputNode], format: format)
+//        engine.attach(playback)
+        engine.attach(timePitch)
+
+        engine.connect(nodes: [sourceNode, timePitch, dynamicsProcessor, engine.mainMixerNode, engine.outputNode], format: format)
 
         if let audioUnit = engine.outputNode.audioUnit {
             addRenderNotify(audioUnit: audioUnit)
