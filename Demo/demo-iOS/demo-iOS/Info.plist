@@ -72,5 +72,15 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>defaultEnablement</key>
+	<string>enabled</string>
+	<key>requiredOnboarding</key>
+	<array>
+		<string>Tap</string>
+		<string>Tilt</string>
+		<string>Scroller drag</string>
+		<string>Arrow swipe</string>
+		<string>Trackpad capture</string>
+	</array>
 </dict>
 </plist>

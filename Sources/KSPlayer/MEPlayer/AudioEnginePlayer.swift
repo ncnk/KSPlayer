@@ -12,12 +12,15 @@ protocol AudioPlayer: AnyObject {
     var playbackRate: Float { get set }
     var volume: Float { get set }
     var isMuted: Bool { get set }
-    var isPaused: Bool { get set }
+    var isPaused: Bool { get }
     var attackTime: Float { get set }
     var releaseTime: Float { get set }
     var threshold: Float { get set }
     var expansionRatio: Float { get set }
     var overallGain: Float { get set }
+    func prepare(options: KSOptions, audioDescriptor: AudioDescriptor)
+    func play(time: TimeInterval)
+    func pause()
 }
 
 public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
@@ -82,16 +85,16 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
 //    private let nbandEQ = AVAudioUnitEQ()
 //    private let distortion = AVAudioUnitDistortion()
 //    private let delay = AVAudioUnitDelay()
-//    private let playback = AVAudioUnitVarispeed()
     private let timePitch = AVAudioUnitTimePitch()
+    private var sourceNode: AVAudioSourceNode?
     private let dynamicsProcessor = AVAudioUnitEffect(audioComponentDescription:
         AudioComponentDescription(componentType: kAudioUnitType_Effect,
                                   componentSubType: kAudioUnitSubType_DynamicsProcessor,
                                   componentManufacturer: kAudioUnitManufacturer_Apple,
                                   componentFlags: 0,
                                   componentFlagsMask: 0))
-    private var currentRenderReadOffset = 0
-    private var sourceNode: AVAudioSourceNode?
+    private var currentRenderReadOffset = UInt32(0)
+    private var sampleSize = UInt32(MemoryLayout<Float>.size)
     weak var renderSource: OutputRenderSourceDelegate?
     private var currentRender: AudioFrame? {
         didSet {
@@ -102,18 +105,7 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
     }
 
     var isPaused: Bool {
-        get {
-            engine.isRunning
-        }
-        set {
-            if newValue {
-                engine.pause()
-            } else {
-                if !engine.isRunning {
-                    try? engine.start()
-                }
-            }
-        }
+        engine.isRunning
     }
 
     var playbackRate: Float {
@@ -121,7 +113,7 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
             timePitch.rate
         }
         set {
-            timePitch.rate = min(2, max(0.5, newValue))
+            timePitch.rate = min(32, max(1 / 32, newValue))
         }
     }
 
@@ -143,61 +135,50 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
         }
     }
 
-    init() {
+    func prepare(options: KSOptions, audioDescriptor: AudioDescriptor) {
+        engine.stop()
+        engine.reset()
+        var channels = audioDescriptor.channels
+        #if os(macOS)
+        channels = 2
+        #else
+        channels = max(min(AVAudioChannelCount(AVAudioSession.sharedInstance().maximumOutputNumberOfChannels), channels), 2)
         KSOptions.setAudioSession()
-        engine.attach(dynamicsProcessor)
-        var format = engine.outputNode.outputFormat(forBus: 0)
-        KSOptions.audioPlayerSampleRate = Int32(format.sampleRate)
-        if let audioUnit = engine.outputNode.audioUnit {
-            KSOptions.channelLayout = AVAudioChannelLayout(layout: setupLayout(audioUnit: audioUnit))
+        try? AVAudioSession.sharedInstance().setPreferredOutputNumberOfChannels(Int(channels))
+        #endif
+        options.audioFormat = audioDescriptor.audioFormat(channels: channels)
+        sampleSize = options.audioFormat.sampleSize
+        KSLog("outputFormat channelLayout AudioFormat: \(options.audioFormat)")
+        if let channelLayout = options.audioFormat.channelLayout {
+            KSLog("outputFormat channelLayout tag: \(channelLayout.layoutTag)")
+            KSLog("outputFormat channelLayout channelDescriptions: \(channelLayout.layout.channelDescriptions)")
         }
-        if KSOptions.channelLayout != format.channelLayout {
-            format = AVAudioFormat(commonFormat: format.commonFormat, sampleRate: format.sampleRate, interleaved: format.isInterleaved, channelLayout: KSOptions.channelLayout)
-        }
-//        engine.attach(nbandEQ)
-//        engine.attach(distortion)
-//        engine.attach(delay)
-        let sourceNode = AVAudioSourceNode(format: format) { [weak self] _, _, frameCount, audioBufferList in
+        //        engine.attach(nbandEQ)
+        //        engine.attach(distortion)
+        //        engine.attach(delay)
+        let sourceNode = AVAudioSourceNode(format: options.audioFormat) { [weak self] _, _, frameCount, audioBufferList in
             self?.audioPlayerShouldInputData(ioData: UnsafeMutableAudioBufferListPointer(audioBufferList), numberOfFrames: frameCount)
             return noErr
         }
         self.sourceNode = sourceNode
         engine.attach(sourceNode)
-//        engine.attach(playback)
+        engine.attach(dynamicsProcessor)
         engine.attach(timePitch)
-
-        engine.connect(nodes: [sourceNode, timePitch, dynamicsProcessor, engine.mainMixerNode, engine.outputNode], format: format)
-
+        engine.connect(nodes: [sourceNode, dynamicsProcessor, timePitch, engine.mainMixerNode, engine.outputNode], format: options.audioFormat)
         if let audioUnit = engine.outputNode.audioUnit {
             addRenderNotify(audioUnit: audioUnit)
         }
         engine.prepare()
     }
 
-    private func setupLayout(audioUnit: AudioUnit) -> UnsafeMutablePointer<AudioChannelLayout> {
-        var size = UInt32(0)
-        AudioUnitGetPropertyInfo(audioUnit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, &size, nil)
-        let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
-        AudioUnitGetProperty(audioUnit, kAudioUnitProperty_AudioChannelLayout, kAudioUnitScope_Output, 0, data, &size)
-        let layout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
-        let tag = layout.pointee.mChannelLayoutTag
-        guard tag != kAudioChannelLayoutTag_UseChannelDescriptions else {
-            return layout
+    func play(time _: TimeInterval) {
+        if !engine.isRunning {
+            try? engine.start()
         }
-        let newLayout: UnsafeMutablePointer<AudioChannelLayout>
-        if tag == kAudioChannelLayoutTag_UseChannelBitmap {
-            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelBitmap>.size), &layout.pointee.mChannelBitmap, &size)
-            let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
-            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForBitmap, UInt32(MemoryLayout<AudioChannelBitmap>.size), &layout.pointee.mChannelBitmap, &size, data)
-            newLayout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
-        } else {
-            AudioFormatGetPropertyInfo(kAudioFormatProperty_ChannelLayoutForTag, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &layout.pointee.mChannelLayoutTag, &size)
-            let data = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<Int8>.alignment)
-            AudioFormatGetProperty(kAudioFormatProperty_ChannelLayoutForTag, UInt32(MemoryLayout<AudioChannelLayoutTag>.size), &layout.pointee.mChannelLayoutTag, &size, data)
-            newLayout = data.bindMemory(to: AudioChannelLayout.self, capacity: 1)
-        }
-        newLayout.pointee.mChannelLayoutTag = kAudioChannelLayoutTag_UseChannelDescriptions
-        return newLayout
+    }
+
+    func pause() {
+        engine.pause()
     }
 
     private func addRenderNotify(audioUnit: AudioUnit) {
@@ -234,7 +215,7 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
 
     private func audioPlayerShouldInputData(ioData: UnsafeMutableAudioBufferListPointer, numberOfFrames: UInt32) {
         var ioDataWriteOffset = 0
-        var numberOfSamples = Int(numberOfFrames)
+        var numberOfSamples = numberOfFrames
         while numberOfSamples > 0 {
             if currentRender == nil {
                 currentRender = renderSource?.getAudioOutputRender()
@@ -248,8 +229,8 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
                 continue
             }
             let framesToCopy = min(numberOfSamples, residueLinesize)
-            let bytesToCopy = framesToCopy * MemoryLayout<Float>.size
-            let offset = currentRenderReadOffset * MemoryLayout<Float>.size
+            let bytesToCopy = Int(framesToCopy * sampleSize)
+            let offset = Int(currentRenderReadOffset * sampleSize)
             for i in 0 ..< min(ioData.count, currentRender.data.count) {
                 (ioData[i].mData! + ioDataWriteOffset).copyMemory(from: currentRender.data[i]! + offset, byteCount: bytesToCopy)
             }
@@ -257,11 +238,11 @@ public final class AudioEnginePlayer: AudioPlayer, FrameOutput {
             ioDataWriteOffset += bytesToCopy
             currentRenderReadOffset += framesToCopy
         }
-        let sizeCopied = (Int(numberOfFrames) - numberOfSamples) * MemoryLayout<Float>.size
+        let sizeCopied = (numberOfFrames - numberOfSamples) * sampleSize
         for i in 0 ..< ioData.count {
-            let sizeLeft = Int(ioData[i].mDataByteSize) - sizeCopied
+            let sizeLeft = Int(ioData[i].mDataByteSize - sizeCopied)
             if sizeLeft > 0 {
-                memset(ioData[i].mData! + sizeCopied, 0, sizeLeft)
+                memset(ioData[i].mData! + Int(sizeCopied), 0, sizeLeft)
             }
         }
     }
@@ -284,20 +265,5 @@ extension AVAudioEngine {
         for i in 0 ..< nodes.count - 1 {
             connect(nodes[i], to: nodes[i + 1], format: format)
         }
-    }
-}
-
-extension AVAudioFormat {
-    func toPCMBuffer(frame: AudioFrame) -> AVAudioPCMBuffer? {
-        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: self, frameCapacity: UInt32(frame.dataSize[0]) / streamDescription.pointee.mBytesPerFrame) else {
-            return nil
-        }
-        pcmBuffer.frameLength = pcmBuffer.frameCapacity
-        for i in 0 ..< min(Int(pcmBuffer.format.channelCount), frame.data.count) {
-            frame.data[i]?.withMemoryRebound(to: Float.self, capacity: Int(pcmBuffer.frameCapacity)) { srcFloatsForChannel in
-                pcmBuffer.floatChannelData?[i].assign(from: srcFloatsForChannel, count: Int(pcmBuffer.frameCapacity))
-            }
-        }
-        return pcmBuffer
     }
 }

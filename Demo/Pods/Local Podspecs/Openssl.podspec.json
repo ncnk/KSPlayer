@@ -1,16 +1,16 @@
 {
   "name": "OpenSSL",
-  "version": "3.0.2",
+  "version": "3.0.7",
   "summary": "OpenSSL",
   "description": "OpenSSL",
-  "homepage": "https://github.com/kingslay/KSPlayer",
+  "homepage": "https://github.com/kingslay/FFmpegKit",
   "authors": {
     "kintan": "554398854@qq.com"
   },
   "license": "MIT",
   "source": {
-    "git": "https://github.com/kingslay/KSPlayer.git",
-    "tag": "3.0.2"
+    "git": "https://github.com/kingslay/FFmpegKit.git",
+    "tag": "3.0.7"
   },
   "platforms": {
     "ios": "13.0",

@@ -35,7 +35,7 @@ public protocol MediaPlayback: AnyObject {
     var currentPlaybackTime: TimeInterval { get }
     func prepareToPlay()
     func shutdown()
-    func seek(time: TimeInterval) async -> Bool
+    func seek(time: TimeInterval, completion: @escaping ((Bool) -> Void))
 }
 
 public protocol MediaPlayerProtocol: MediaPlayback {
@@ -58,10 +58,10 @@ public protocol MediaPlayerProtocol: MediaPlayback {
     var subtitleDataSouce: SubtitleDataSouce? { get }
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, *)
     var playbackCoordinator: AVPlaybackCoordinator { get }
+    @available(tvOS 14.0, *)
+    var pipController: KSPictureInPictureController? { get }
     init(url: URL, options: KSOptions)
     func replace(url: URL, options: KSOptions)
-    @available(tvOS 14.0, *)
-    func pipController() -> AVPictureInPictureController?
     func play()
     func pause()
     func enterBackground()
@@ -131,16 +131,19 @@ public extension MediaPlayerTrack {
         mediaSubType.rawValue
     }
 
-    var dynamicRange: DynamicRange {
+    func dynamicRange(_ options: KSOptions) -> DynamicRange {
+        let cotentRange: DynamicRange
         if dovi != nil || codecType.string == "dvhe" || codecType == kCMVideoCodecType_DolbyVisionHEVC {
-            return .DOVI
+            cotentRange = .dolbyVision
         } else if transferFunction == kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ as String { /// HDR
-            return .HDR
+            cotentRange = .hdr10
         } else if transferFunction == kCVImageBufferTransferFunction_ITU_R_2100_HLG as String { /// HDR
-            return .HLG
+            cotentRange = .hlg
         } else {
-            return .SDR
+            cotentRange = .sdr
         }
+
+        return options.availableDynamicRange(cotentRange) ?? cotentRange
     }
 
     var colorSpace: CGColorSpace? {
@@ -149,42 +152,73 @@ public extension MediaPlayerTrack {
 }
 
 public enum DynamicRange: Int32 {
-    case SDR = 0
-    case HDR = 2
-    case HLG = 3
-    case DOVI = 5
+    case sdr = 0
+    case hdr10 = 2
+    case hlg = 3
+    case dolbyVision = 5
+
+    #if canImport(UIKit)
+    var hdrMode: AVPlayer.HDRMode {
+        switch self {
+        case .sdr:
+            return AVPlayer.HDRMode(rawValue: 0)
+        case .hdr10:
+            return .hdr10
+        case .hlg:
+            return .hlg
+        case .dolbyVision:
+            return .dolbyVision
+        }
+    }
+    #endif
 }
 
 extension DynamicRange {
     var colorPrimaries: CFString {
         switch self {
-        case .SDR:
+        case .sdr:
             return kCVImageBufferColorPrimaries_ITU_R_709_2
-        case .HDR, .HLG, .DOVI:
+        case .hdr10, .hlg, .dolbyVision:
             return kCVImageBufferColorPrimaries_ITU_R_2020
         }
     }
 
     var transferFunction: CFString {
         switch self {
-        case .SDR:
+        case .sdr:
             return kCVImageBufferTransferFunction_ITU_R_709_2
-        case .HDR:
+        case .hdr10:
             return kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ
-        case .HLG, .DOVI:
+        case .hlg, .dolbyVision:
             return kCVImageBufferTransferFunction_ITU_R_2100_HLG
         }
     }
 
     var yCbCrMatrix: CFString {
         switch self {
-        case .SDR:
+        case .sdr:
             return kCVImageBufferYCbCrMatrix_ITU_R_709_2
-        case .HDR, .HLG, .DOVI:
+        case .hdr10, .hlg, .dolbyVision:
             return kCVImageBufferYCbCrMatrix_ITU_R_2020
         }
     }
 }
+
+#if canImport(UIKit)
+extension AVPlayer.HDRMode {
+    var dynamicRange: DynamicRange {
+        if contains(.dolbyVision) {
+            return .dolbyVision
+        } else if contains(.hlg) {
+            return .hlg
+        } else if contains(.hdr10) {
+            return .hdr10
+        } else {
+            return .sdr
+        }
+    }
+}
+#endif
 
 public struct DOVIDecoderConfigurationRecord {
     // swiftlint:disable identifier_name
@@ -251,7 +285,7 @@ open class KSOptions {
     public var isAutoPlay = KSOptions.isAutoPlay
     /// seek完是否自动播放
     public var isSeekedAutoPlay = KSOptions.isSeekedAutoPlay
-    
+
     public var firstPlayerType = KSOptions.firstPlayerType
     
     public var secondPlayerType = KSOptions.secondPlayerType
@@ -266,29 +300,34 @@ open class KSOptions {
     public var cache = false
     public var outputURL: URL?
     public var display = DisplayEnum.plane
-    public var audioDelay = 0.0 // s
-    public var subtitleDelay = 0.0 // s
-    public var videoDisable = false
-    public var audioFilters: String?
-    public var videoFilters: String?
-    public var subtitleDisable = false
-    public var videoAdaptable = true
-    public var syncDecodeAudio = false
-    public var syncDecodeVideo = false
     public var avOptions = [String: Any]()
     public var formatContextOptions = [String: Any]()
-    public var hardwareDecode = true
     public var decoderOptions = [String: Any]()
     public var probesize: Int64?
     public var maxAnalyzeDuration: Int64?
     public var lowres = UInt8(0)
-    public var autoSelectEmbedSubtitle = true
-    public var asynchronousDecompression = true
-    public var autoDeInterlace = false
+
     public var startPlayTime: TimeInterval?
-    public var isHDRToSDR = false
+    // audio
+    public var audioDelay = 0.0 // s
+    public var audioFilters: String?
+    public var syncDecodeAudio = false
+    // sutile
+    public var autoSelectEmbedSubtitle = true
+    public var subtitleDelay = 0.0 // s
+    public var subtitleDisable = false
+    public var isSeekImageSubtitle = false
+    // video
+    public var autoDeInterlace = false
     public var destinationDynamicRange: DynamicRange?
-    @Published var preferredFramesPerSecond = Float(60)
+    public var dropVideoFrame = true
+    public var videoAdaptable = true
+    public var videoFilters: String?
+    public var syncDecodeVideo = false
+    public var hardwareDecode = true
+    public var asynchronousDecompression = true
+    public var videoDisable = false
+
     public internal(set) var formatName = ""
     public internal(set) var prepareTime = 0.0
     public internal(set) var dnsStartTime = 0.0
@@ -302,6 +341,9 @@ open class KSOptions {
     public internal(set) var decodeAudioTime = 0.0
     public internal(set) var decodeVideoTime = 0.0
     var formatCtx: UnsafeMutablePointer<AVFormatContext>?
+
+    var audioFormat = AVAudioFormat(standardFormatWithSampleRate: 44100, channelLayout: AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_Stereo)!)
+
     public init() {
         formatContextOptions["auto_convert"] = 0
         formatContextOptions["fps_probe_size"] = 3
@@ -418,7 +460,7 @@ open class KSOptions {
     }
 
     open func videoFrameMaxCount(fps: Float) -> Int {
-        Int(fps / 4)
+        Int(ceil(fps)) >> 1
     }
 
     open func audioFrameMaxCount(fps _: Float, channels: Int) -> Int {
@@ -500,6 +542,27 @@ open class KSOptions {
         nil
     }
     #endif
+
+    func availableDynamicRange(_ cotentRange: DynamicRange?) -> DynamicRange? {
+        #if canImport(UIKit)
+        let availableHDRModes = AVPlayer.availableHDRModes
+        if let preferedDynamicRange = destinationDynamicRange {
+            // value of 0 indicates that no HDR modes are supported.
+            if availableHDRModes == AVPlayer.HDRMode(rawValue: 0) {
+                return .sdr
+            } else if availableHDRModes.contains(preferedDynamicRange.hdrMode) {
+                return preferedDynamicRange
+            } else if let cotentRange,
+                      availableHDRModes.contains(cotentRange.hdrMode)
+            {
+                return cotentRange
+            } else if preferedDynamicRange != .sdr { // trying update to HDR mode
+                return availableHDRModes.dynamicRange
+            }
+        }
+        #endif
+        return cotentRange
+    }
 }
 
 // 缓冲情况
@@ -523,6 +586,17 @@ public struct LoadingState {
     public let isSeek: Bool
 }
 
+public enum LogLevel: Int32 {
+    case panic = 0
+    case fatal = 8
+    case error = 16
+    case warning = 24
+    case info = 32
+    case verbose = 40
+    case debug = 48
+    case trace = 56
+}
+
 public extension KSOptions {
     static var firstPlayerType: MediaPlayerProtocol.Type = KSAVPlayer.self
     static var secondPlayerType: MediaPlayerProtocol.Type?
@@ -540,11 +614,13 @@ public extension KSOptions {
     static var isAutoPlay = false
     /// seek完是否自动播放
     static var isSeekedAutoPlay = true
-    static var enableMaxOutputChannels = true
-    static var pipController: Any?
+    /// 日志级别
+    static var logLevel = LogLevel.warning
     /// 日志输出方式
-    static var logFunctionPoint: (String) -> Void = {
-        print($0)
+    static var logFunctionPoint: (String, LogLevel) -> Void = { str, level in
+        if level.rawValue <= KSOptions.logLevel.rawValue {
+            print(str)
+        }
     }
 
     internal static func deviceCpuCount() -> Int {
@@ -562,11 +638,8 @@ public extension KSOptions {
         if category != .playback, category != .playAndRecord {
             try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, policy: .longFormAudio)
         }
+        try? AVAudioSession.sharedInstance().setMode(.moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        if KSOptions.enableMaxOutputChannels {
-            let maxOut = AVAudioSession.sharedInstance().maximumOutputNumberOfChannels
-            try? AVAudioSession.sharedInstance().setPreferredOutputNumberOfChannels(maxOut)
-        }
         if #available(tvOS 15.0, iOS 15.0, *) {
             try? AVAudioSession.sharedInstance().setSupportsMultichannelContent(true)
         }
@@ -589,9 +662,9 @@ public enum MediaLoadState: Int {
     case playable
 }
 
-@inline(__always) func KSLog(_ message: CustomStringConvertible, file: String = #file, function: String = #function, line: Int = #line) {
+@inline(__always) public func KSLog(_ message: CustomStringConvertible, logLevel: LogLevel = .warning, file: String = #file, function: String = #function, line: Int = #line) {
     let fileName = (file as NSString).lastPathComponent
-    KSOptions.logFunctionPoint("KSPlayer: \(fileName):\(line) \(function) | \(message)")
+    KSOptions.logFunctionPoint("KSPlayer: \(fileName):\(line) \(function) | \(message)", logLevel)
 }
 
 public let KSPlayerErrorDomain = "KSPlayerErrorDomain"
@@ -674,7 +747,7 @@ extension NSError {
 
 extension CMTime {
     init(seconds: TimeInterval) {
-        self.init(seconds: seconds, preferredTimescale: Int32(NSEC_PER_SEC))
+        self.init(seconds: seconds, preferredTimescale: Int32(USEC_PER_SEC))
     }
 }
 
@@ -742,6 +815,11 @@ public extension URL {
         }
         return false
     }
+
+    var isSubtitle: Bool {
+        pathExtension == "srt" || pathExtension == "ass"
+    }
+
 }
 
 #if !SWIFT_PACKAGE

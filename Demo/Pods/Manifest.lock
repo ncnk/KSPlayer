@@ -1,7 +1,7 @@
 PODS:
-  - FFmpeg (5.1):
-    - FFmpeg/FFmpeg (= 5.1)
-  - FFmpeg/FFmpeg (5.1):
+  - FFmpegKit (5.1):
+    - FFmpegKit/FFmpegKit (= 5.1)
+  - FFmpegKit/FFmpegKit (5.1):
     - OpenSSL
   - KSPlayer (1.0):
     - KSPlayer/Audio (= 1.0)
@@ -18,7 +18,7 @@ PODS:
   - KSPlayer/Core (1.0):
     - KSPlayer/AVPlayer
   - KSPlayer/MEPlayer (1.0):
-    - FFmpeg
+    - FFmpegKit
     - KSPlayer/AVPlayer
     - KSPlayer/Metal
     - KSPlayer/Subtitle
@@ -30,16 +30,16 @@ PODS:
   - KSPlayer/Video (1.0):
     - KSPlayer/Core
     - KSPlayer/Subtitle
-  - OpenSSL (3.0.2):
-    - OpenSSL/OpenSSL (= 3.0.2)
-  - OpenSSL/OpenSSL (3.0.2)
+  - OpenSSL (3.0.7):
+    - OpenSSL/OpenSSL (= 3.0.7)
+  - OpenSSL/OpenSSL (3.0.7)
   - SwiftLint (0.39.2)
 
 DEPENDENCIES:
-  - FFmpeg (from `../`)
+  - FFmpegKit (from `https://github.com/kingslay/FFmpegKit.git`, branch `main`)
   - KSPlayer (from `../`)
   - KSPlayer/Tests (from `../`)
-  - OpenSSL (from `../`)
+  - OpenSSL (from `https://github.com/kingslay/FFmpegKit.git`, branch `main`)
   - SwiftLint
 
 SPEC REPOS:
@@ -47,19 +47,29 @@ SPEC REPOS:
     - SwiftLint
 
 EXTERNAL SOURCES:
-  FFmpeg:
-    :path: "../"
+  FFmpegKit:
+    :branch: main
+    :git: https://github.com/kingslay/FFmpegKit.git
   KSPlayer:
     :path: "../"
   OpenSSL:
-    :path: "../"
+    :branch: main
+    :git: https://github.com/kingslay/FFmpegKit.git
+
+CHECKOUT OPTIONS:
+  FFmpegKit:
+    :commit: a01f48a2240648213cbf037e77f58a3e81e7bbbc
+    :git: https://github.com/kingslay/FFmpegKit.git
+  OpenSSL:
+    :commit: a01f48a2240648213cbf037e77f58a3e81e7bbbc
+    :git: https://github.com/kingslay/FFmpegKit.git
 
 SPEC CHECKSUMS:
-  FFmpeg: afdcf31638c1a6a0253eaf9505983e21a3a5d2c1
-  KSPlayer: d0ee11093f3230cc235a3f555f5c4aee9052265e
-  OpenSSL: 9637184330c49c5862fc0bb383005bd55e5a2335
+  FFmpegKit: 7aaceb5b80a8f70a9bed9353bc9d96e2360dcaad
+  KSPlayer: c5ddb98d9e2862a66640e82f1c9187e1e08c01fa
+  OpenSSL: 49b6db0248e35b90229f68eb19e6afb3d43ed937
   SwiftLint: 22ccbbe3b8008684be5955693bab135e0ed6a447
 
-PODFILE CHECKSUM: a88f7a03bcaf7f25903f40f95dcc14fdee02a835
+PODFILE CHECKSUM: 107e34b91db1f3df2c49b3e0697664e443d16e02
 
 COCOAPODS: 1.11.3

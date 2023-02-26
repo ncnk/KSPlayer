@@ -71,7 +71,25 @@ open class PlayerView: UIView, KSPlayerLayerDelegate, KSSliderDelegate {
 
     @objc func onButtonPressed(_ button: UIButton) {
         guard let type = PlayerButtonType(rawValue: button.tag) else { return }
+
+        #if os(macOS)
+        if let menu = button.menu,
+           let item = button.menu?.items.first(where: { $0.state == .on })
+        {
+            menu.popUp(positioning: item,
+                       at: button.frame.origin,
+                       in: self)
+        } else {
+            onButtonPressed(type: type, button: button)
+        }
+        #elseif os(tvOS)
         onButtonPressed(type: type, button: button)
+        #else
+        if #available(iOS 14.0, *), button.menu != nil {
+            return
+        }
+        onButtonPressed(type: type, button: button)
+        #endif
     }
 
     open func onButtonPressed(type: PlayerButtonType, button: UIButton) {
@@ -92,6 +110,22 @@ open class PlayerView: UIView, KSPlayerLayerDelegate, KSSliderDelegate {
         delegate?.playerController(action: type)
     }
 
+    #if canImport(UIKit)
+    override open func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+        guard let presse = presses.first else {
+            return
+        }
+        switch presse.type {
+        case .playPause:
+            if let playerLayer, playerLayer.state.isPlaying {
+                pause()
+            } else {
+                play()
+            }
+        default: super.pressesBegan(presses, with: event)
+        }
+    }
+    #endif
     open func play() {
         becomeFirstResponder()
         playerLayer?.play()
@@ -101,8 +135,8 @@ open class PlayerView: UIView, KSPlayerLayerDelegate, KSSliderDelegate {
         playerLayer?.pause()
     }
 
-    open func seek(time: TimeInterval) async -> Bool {
-        await playerLayer?.seek(time: time, autoPlay: KSOptions.isSeekedAutoPlay) ?? false
+    open func seek(time: TimeInterval, completion: @escaping ((Bool) -> Void)) {
+        playerLayer?.seek(time: time, autoPlay: KSOptions.isSeekedAutoPlay, completion: completion)
     }
 
     open func resetPlayer() {
@@ -122,8 +156,7 @@ open class PlayerView: UIView, KSPlayerLayerDelegate, KSSliderDelegate {
         if event == .valueChanged {
             toolBar.currentTime = value
         } else if event == .touchUpInside {
-            Task {
-                await seek(time: value)
+            seek(time: value) { _ in
             }
         }
     }
@@ -134,6 +167,7 @@ open class PlayerView: UIView, KSPlayerLayerDelegate, KSSliderDelegate {
         delegate?.playerController(state: state)
         if state == .readyToPlay {
             totalTime = layer.player.duration
+            toolBar.isSeekable = layer.player.seekable
         } else if state == .playedToTheEnd || state == .paused || state == .error {
             toolBar.playButton.isSelected = false
         } else if state.isPlaying {

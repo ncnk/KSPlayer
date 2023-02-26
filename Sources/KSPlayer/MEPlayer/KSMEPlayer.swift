@@ -16,24 +16,28 @@ import AppKit
 public class KSMEPlayer: NSObject {
     private var loopCount = 1
     private var playerItem: MEPlayerItem
-    public let audioOutput = AudioEnginePlayer()
-    public let videoOutput: MetalPlayView?
+    private let audioOutput: AudioPlayer & FrameOutput = KSOptions.isUseAudioRenderer ? AudioRendererPlayer() : AudioEnginePlayer()
     private var options: KSOptions
     private var bufferingCountDownTimer: Timer?
+    public let videoOutput: MetalPlayView?
     public private(set) var bufferingProgress = 0 {
         didSet {
             delegate?.changeBuffering(player: self, progress: bufferingProgress)
         }
     }
 
-    @available(tvOS 14.0, *)
-    public func pipController() -> AVPictureInPictureController? {
+    private lazy var _pipController: Any? = {
         if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *), let videoOutput {
-            let contentSource = AVPictureInPictureController.ContentSource(sampleBufferDisplayLayer: videoOutput.displayLayer, playbackDelegate: self)
-            return AVPictureInPictureController(contentSource: contentSource)
+            let contentSource = AVPictureInPictureController.ContentSource(sampleBufferDisplayLayer: videoOutput.displayView.displayLayer, playbackDelegate: self)
+            return KSPictureInPictureController(contentSource: contentSource)
         } else {
             return nil
         }
+    }()
+
+    @available(tvOS 14.0, *)
+    public var pipController: KSPictureInPictureController? {
+        _pipController as? KSPictureInPictureController
     }
 
     private lazy var _playbackCoordinator: Any? = {
@@ -111,7 +115,11 @@ extension KSMEPlayer {
         runInMainqueue { [weak self] in
             guard let self else { return }
             let isPaused = !(self.playbackState == .playing && self.loadState == .playable)
-            self.audioOutput.isPaused = isPaused
+            if isPaused {
+                self.audioOutput.pause()
+            } else {
+                self.audioOutput.play(time: self.playerItem.currentPlaybackTime)
+            }
             self.videoOutput?.isPaused = isPaused
             self.delegate?.changeLoadState(player: self)
         }
@@ -122,6 +130,14 @@ extension KSMEPlayer: MEPlayerDelegate {
     func sourceDidOpened() {
         isReadyToPlay = true
         options.readyTime = CACurrentMediaTime()
+        let audioDescriptor = tracks(mediaType: .audio).compactMap {
+            $0 as? FFmpegAssetTrack
+        }.max { track1, track2 in
+            track1.audioDescriptor.channels < track2.audioDescriptor.channels
+        }?.audioDescriptor ?? .defaultValue
+        let fps = tracks(mediaType: .video).map(\.nominalFrameRate).max() ?? 24
+        audioOutput.prepare(options: options, audioDescriptor: audioDescriptor)
+        videoOutput?.prepare(fps: fps)
         runInMainqueue { [weak self] in
             guard let self else { return }
             self.videoOutput?.drawableSize = self.naturalSize
@@ -145,12 +161,12 @@ extension KSMEPlayer: MEPlayerDelegate {
                 if self.options.isLoopPlay {
                     self.loopCount += 1
                     self.delegate?.playBack(player: self, loopCount: self.loopCount)
-                    self.audioOutput.isPaused = false
+                    self.audioOutput.play(time: self.currentPlaybackTime)
                     self.videoOutput?.isPaused = false
                 } else {
                     self.playbackState = .finished
                     if type == .audio {
-                        self.audioOutput.isPaused = true
+                        self.audioOutput.pause()
                     } else if type == .video {
                         self.videoOutput?.isPaused = true
                     }
@@ -166,7 +182,7 @@ extension KSMEPlayer: MEPlayerDelegate {
             playableTime = currentPlaybackTime + loadingState.loadedTime
         }
         if loadState == .playable {
-            if !loadingState.isEndOfFile, loadingState.packetCount == 0, loadingState.frameCount == 0 {
+            if !loadingState.isEndOfFile, loadingState.frameCount == 0, loadingState.packetCount == 0 || !(loadingState.isFirst || loadingState.isSeek) {
                 loadState = .loading
                 if playbackState == .playing {
                     runInMainqueue { [weak self] in
@@ -283,12 +299,10 @@ extension KSMEPlayer: MediaPlayerProtocol {
 
     public var currentPlaybackTime: TimeInterval {
         get {
-            playerItem.currentPlaybackTime
+            playerItem.currentPlaybackTime - playerItem.startTime
         }
         set {
-            Task {
-                await seek(time: newValue)
-            }
+            seek(time: newValue) { _ in }
         }
     }
 
@@ -296,7 +310,7 @@ extension KSMEPlayer: MediaPlayerProtocol {
 
     public var seekable: Bool { playerItem.seekable }
 
-    public func seek(time: TimeInterval) async -> Bool {
+    public func seek(time: TimeInterval, completion: @escaping ((Bool) -> Void)) {
         let time = max(time, 0)
         playbackState = .seeking
         runInMainqueue { [weak self] in
@@ -308,7 +322,7 @@ extension KSMEPlayer: MediaPlayerProtocol {
         } else {
             seekTime = time
         }
-        return await playerItem.seek(time: seekTime)
+        playerItem.seek(time: seekTime + playerItem.startTime, completion: completion)
     }
 
     public func prepareToPlay() {
@@ -375,7 +389,14 @@ extension KSMEPlayer: MediaPlayerProtocol {
     }
 
     public func tracks(mediaType: AVFoundation.AVMediaType) -> [MediaPlayerTrack] {
-        playerItem.assetTracks.filter { $0.mediaType == mediaType }
+        playerItem.assetTracks.compactMap { track -> MediaPlayerTrack? in
+            if track.mediaType == mediaType {
+                return track
+            } else if mediaType == .subtitle {
+                return track.closedCaptionsTrack
+            }
+            return nil
+        }
     }
 
     public func select(track: MediaPlayerTrack) {
@@ -399,7 +420,7 @@ extension KSMEPlayer: AVPictureInPictureSampleBufferPlaybackDelegate {
 
     public func pictureInPictureController(_: AVPictureInPictureController, didTransitionToRenderSize _: CMVideoDimensions) {}
     public func pictureInPictureController(_: AVPictureInPictureController, skipByInterval skipInterval: CMTime) async {
-        _ = await seek(time: currentPlaybackTime + skipInterval.seconds)
+        seek(time: currentPlaybackTime + skipInterval.seconds) { _ in }
     }
 
     public func pictureInPictureControllerShouldProhibitBackgroundAudioPlayback(_: AVPictureInPictureController) -> Bool {
@@ -449,7 +470,7 @@ extension KSMEPlayer: AVPlaybackCoordinatorPlaybackControlDelegate {
         if abs(currentPlaybackTime - seekTime) < CGFLOAT_EPSILON {
             return
         }
-        _ = await seek(time: seekTime)
+        seek(time: seekTime) { _ in }
     }
 
     public func playbackCoordinator(_: AVDelegatingPlaybackCoordinator, didIssue bufferingCommand: AVDelegatingPlaybackCoordinatorBufferingCommand, completionHandler: @escaping () -> Void) {
@@ -475,5 +496,5 @@ extension KSMEPlayer: AVPlaybackCoordinatorPlaybackControlDelegate {
 }
 
 public extension KSMEPlayer {
-    var subtitleDataSouce: SubtitleDataSouce? { playerItem }
+    var subtitleDataSouce: SubtitleDataSouce? { self }
 }

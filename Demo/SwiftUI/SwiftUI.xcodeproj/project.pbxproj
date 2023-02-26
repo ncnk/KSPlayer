@@ -19,7 +19,9 @@
 		AC84D8EA28ABBD0E00344154 /* mjpeg.flac in Resources */ = {isa = PBXBuildFile; fileRef = AC84D8DB28ABBD0D00344154 /* mjpeg.flac */; };
 		AC84D8ED28ABBD0E00344154 /* hevc.mkv in Resources */ = {isa = PBXBuildFile; fileRef = AC84D8DC28ABBD0D00344154 /* hevc.mkv */; };
 		AC84D8F028ABBD0E00344154 /* raw.h264 in Resources */ = {isa = PBXBuildFile; fileRef = AC84D8DD28ABBD0D00344154 /* raw.h264 */; };
+		ACA237132938B78B008916E3 /* dolby-digital-plus-channel.mkv in Resources */ = {isa = PBXBuildFile; fileRef = ACA237122938B78A008916E3 /* dolby-digital-plus-channel.mkv */; };
 		ACD2F772275F735C0006D16F /* KSPlayer in Frameworks */ = {isa = PBXBuildFile; productRef = ACD2F771275F735C0006D16F /* KSPlayer */; };
+		ACEA9FEB298BFC8800FBA74B /* TestURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = ACEA9FEA298BFC8800FBA74B /* TestURL.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,9 +40,11 @@
 		AC84D8DB28ABBD0D00344154 /* mjpeg.flac */ = {isa = PBXFileReference; lastKnownFileType = file; path = mjpeg.flac; sourceTree = "<group>"; };
 		AC84D8DC28ABBD0D00344154 /* hevc.mkv */ = {isa = PBXFileReference; lastKnownFileType = file; path = hevc.mkv; sourceTree = "<group>"; };
 		AC84D8DD28ABBD0D00344154 /* raw.h264 */ = {isa = PBXFileReference; lastKnownFileType = file; path = raw.h264; sourceTree = "<group>"; };
+		ACA237122938B78A008916E3 /* dolby-digital-plus-channel.mkv */ = {isa = PBXFileReference; lastKnownFileType = file; path = "dolby-digital-plus-channel.mkv"; sourceTree = "<group>"; };
 		ACADA07528EDC067001B76D1 /* TracyPlayer.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TracyPlayer.entitlements; sourceTree = "<group>"; };
 		ACD2F747275F6E860006D16F /* KSPlayer */ = {isa = PBXFileReference; lastKnownFileType = folder; name = KSPlayer; path = ../..; sourceTree = "<group>"; };
 		ACE3619328EB689F00F234EB /* TracyPlayer-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "TracyPlayer-Info.plist"; sourceTree = "<group>"; };
+		ACEA9FEA298BFC8800FBA74B /* TestURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestURL.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -72,6 +76,7 @@
 			children = (
 				AC3CAD6228BB88A200AA1C2C /* AVDisplayCriteriaKS.h */,
 				AC3CAD6328BB893500AA1C2C /* Bridging-Header.h */,
+				ACEA9FEA298BFC8800FBA74B /* TestURL.swift */,
 				AC44E0F929290CBB00617BD3 /* FirstView.swift */,
 				AC44E0FA29290CBC00617BD3 /* SecondView.swift */,
 				AC77DFB026402327001351AE /* DemoApp.swift */,
@@ -108,6 +113,7 @@
 		ACD2F77F275F9BEE0006D16F /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				ACA237122938B78A008916E3 /* dolby-digital-plus-channel.mkv */,
 				AC84D8D928ABBD0D00344154 /* dvd_subtitle.mkv */,
 				AC84D8DA28ABBD0D00344154 /* h264.mp4 */,
 				AC84D8DC28ABBD0D00344154 /* hevc.mkv */,
@@ -121,46 +127,6 @@
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
-
-/* Begin PBXLegacyTarget section */
-		AC611E1B2902A0DF00553022 /* FFmpegMake */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "$(ACTION)";
-			buildConfigurationList = AC611E1E2902A0DF00553022 /* Build configuration list for PBXLegacyTarget "FFmpegMake" */;
-			buildPhases = (
-			);
-			buildToolPath = /usr/bin/make;
-			buildWorkingDirectory = "$(SRCROOT)/../../Script/FFmpeg/macos/scratch/x86_64";
-			dependencies = (
-			);
-			name = FFmpegMake;
-			passBuildSettingsInEnvironment = 1;
-			productName = FFmpegMake;
-			productSettingsXML = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
-<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">
-<plist version=\"1.0\">
-<dict>
-	<key>CFBundleDevelopmentRegion</key>
-	<string>$(DEVELOPMENT_LANGUAGE)</string>
-	<key>CFBundleExecutable</key>
-	<string>$(EXECUTABLE_NAME)</string>
-	<key>CFBundleIdentifier</key>
-	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<key>CFBundleInfoDictionaryVersion</key>
-	<string>6.0</string>
-	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
-	<key>CFBundlePackageType</key>
-	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
-	<key>CFBundleShortVersionString</key>
-	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-</dict>
-</plist>
-";
-		};
-/* End PBXLegacyTarget section */
 
 /* Begin PBXNativeTarget section */
 		AC77DFB626402329001351AE /* TracyPlayer */ = {
@@ -190,11 +156,8 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1310;
-				LastUpgradeCheck = 1400;
+				LastUpgradeCheck = 1420;
 				TargetAttributes = {
-					AC611E1B2902A0DF00553022 = {
-						CreatedOnToolsVersion = 14.0.1;
-					};
 					AC77DFB626402329001351AE = {
 						CreatedOnToolsVersion = 12.4;
 					};
@@ -214,7 +177,6 @@
 			projectRoot = "";
 			targets = (
 				AC77DFB626402329001351AE /* TracyPlayer */,
-				AC611E1B2902A0DF00553022 /* FFmpegMake */,
 			);
 		};
 /* End PBXProject section */
@@ -232,6 +194,7 @@
 				AC84D8E728ABBD0E00344154 /* h264.mp4 in Resources */,
 				AC84D8F028ABBD0E00344154 /* raw.h264 in Resources */,
 				AC84D8E428ABBD0E00344154 /* dvd_subtitle.mkv in Resources */,
+				ACA237132938B78B008916E3 /* dolby-digital-plus-channel.mkv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,6 +207,7 @@
 			files = (
 				AC77DFC526402329001351AE /* ContentView.swift in Sources */,
 				AC44E0FD29290CF800617BD3 /* FirstView.swift in Sources */,
+				ACEA9FEB298BFC8800FBA74B /* TestURL.swift in Sources */,
 				AC44E0FC29290CBC00617BD3 /* SecondView.swift in Sources */,
 				AC77DFC326402329001351AE /* DemoApp.swift in Sources */,
 			);
@@ -252,33 +216,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		AC611E1C2902A0DF00553022 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CODE_SIGN_STYLE = Automatic;
-				DEBUGGING_SYMBOLS = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Debug;
-		};
-		AC611E1D2902A0DF00553022 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
-				CODE_SIGN_STYLE = Automatic;
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Release;
-		};
 		AC77DFC926402329001351AE /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -332,6 +269,8 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -391,6 +330,8 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
 				MACOSX_DEPLOYMENT_TARGET = 12.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -406,6 +347,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = AppIconTVOS;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = TracyPlayer.entitlements;
@@ -414,10 +356,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10500;
 				DEVELOPMENT_TEAM = 3RVHT92X9D;
+				ENABLE_HARDENED_RUNTIME = YES;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "TracyPlayer-Info.plist";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				INFOPLIST_KEY_UILaunchStoryboardName = " ";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
@@ -433,7 +375,7 @@
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = YES;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Shared/Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,3,6";
@@ -444,6 +386,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				"ASSETCATALOG_COMPILER_APPICON_NAME[sdk=appletvos*]" = AppIconTVOS;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = TracyPlayer.entitlements;
@@ -452,10 +395,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 10500;
 				DEVELOPMENT_TEAM = 3RVHT92X9D;
+				ENABLE_HARDENED_RUNTIME = YES;
 				"ENABLE_HARDENED_RUNTIME[sdk=macosx*]" = YES;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = "TracyPlayer-Info.plist";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.video";
 				INFOPLIST_KEY_UILaunchStoryboardName = " ";
 				INFOPLIST_KEY_UIRequiresFullScreen = YES;
 				INFOPLIST_KEY_UIStatusBarStyle = UIStatusBarStyleDarkContent;
@@ -471,7 +414,7 @@
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=macosx*]" = "";
 				SUPPORTED_PLATFORMS = "appletvos appletvsimulator iphoneos iphonesimulator macosx";
 				SUPPORTS_MACCATALYST = YES;
-				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = "Shared/Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,3,6";
@@ -482,15 +425,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AC611E1E2902A0DF00553022 /* Build configuration list for PBXLegacyTarget "FFmpegMake" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				AC611E1C2902A0DF00553022 /* Debug */,
-				AC611E1D2902A0DF00553022 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		AC77DFAE26402327001351AE /* Build configuration list for PBXProject "SwiftUI" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

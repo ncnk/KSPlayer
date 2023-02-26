@@ -11,7 +11,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var showAddActionSheet = false
-    @State private var resources = [KSPlayerResource]()
+    @State private var resources = testObjects
     @State private var searchText = ""
     @State private var playURL: String = ""
     @State private var playList: String = ""
@@ -65,17 +65,15 @@ struct ContentView: View {
         }
         path.appendPathComponent("cache.m3u8")
         if FileManager.default.fileExists(atPath: path.path) {
-            do {
-                let data = try Data(contentsOf: path)
-                guard let string = String(data: data, encoding: .utf8) else {
-                    return
-                }
-                resources.removeAll()
-                #if DEBUG
-                resources.append(contentsOf: objects)
-                #endif
-                resources.append(contentsOf: parsem3u8(string: string))
-            } catch {}
+            DispatchQueue.main.async {
+                do {
+                    let data = try Data(contentsOf: path)
+                    guard let string = String(data: data, encoding: .utf8) else {
+                        return
+                    }
+                    self.resources.append(contentsOf: parsem3u8(string: string))
+                } catch {}
+            }
         }
     }
 
@@ -88,7 +86,6 @@ struct ContentView: View {
                 return
             }
             self.saveToDocument(data: data, filename: "cache.m3u8")
-            self.resources.removeAll()
             self.resources.append(contentsOf: self.parsem3u8(string: string))
         }.resume()
     }

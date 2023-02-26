@@ -10,25 +10,39 @@ public class URLSubtitleInfo: SubtitleInfo {
     public let name: String
     public let subtitleID: String
     public var comment: String?
-    public var downloadURL: URL?
+    public let downloadURL: URL?
     public var userInfo: NSMutableDictionary?
     private let fetchSubtitleDetail: (((NSError?) -> Void) -> Void)?
-    public init(subtitleID: String, name: String, fetchSubtitleDetail: (((NSError?) -> Void) -> Void)? = nil) {
+    public init(subtitleID: String, name: String, fetchSubtitleDetail: @escaping ((NSError?) -> Void) -> Void) {
         self.subtitleID = subtitleID
         self.name = name
         self.fetchSubtitleDetail = fetchSubtitleDetail
+        downloadURL = nil
+    }
+
+    public convenience init(url: URL) {
+        self.init(subtitleID: url.path, name: url.lastPathComponent, url: url)
+    }
+
+    public init(subtitleID: String, name: String, url: URL?) {
+        self.subtitleID = subtitleID
+        self.name = name
+        downloadURL = url
+        fetchSubtitleDetail = nil
     }
 
     public func disableSubtitle() {}
 
     public func enableSubtitle(completion: @escaping (Result<KSSubtitleProtocol, NSError>) -> Void) {
         let block = { (url: URL) in
-            let subtitles = KSURLSubtitle()
-            do {
-                try subtitles.parse(url: url)
-                completion(.success(subtitles))
-            } catch {
-                completion(.failure(error as NSError))
+            DispatchQueue.global().async {
+                do {
+                    let subtitles = KSURLSubtitle()
+                    try subtitles.parse(url: url)
+                    completion(.success(subtitles))
+                } catch {
+                    completion(.failure(error as NSError))
+                }
             }
         }
         if let downloadURL {
@@ -88,8 +102,7 @@ public class CacheDataSouce: SubtitleDataSouce {
                 infos = nil
             } else {
                 let array = srtInfoCaches.map { subtitleID, downloadURL -> SubtitleInfo in
-                    let info = URLSubtitleInfo(subtitleID: subtitleID, name: (downloadURL as NSString).lastPathComponent)
-                    info.downloadURL = URL(fileURLWithPath: downloadURL)
+                    let info = URLSubtitleInfo(subtitleID: subtitleID, name: (downloadURL as NSString).lastPathComponent, url: URL(fileURLWithPath: downloadURL))
                     info.comment = "本地"
                     return info
                 }

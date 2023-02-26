@@ -35,6 +35,11 @@
     {
       "name": "Metal",
       "source_files": "Sources/KSPlayer/Metal/*.{swift,metal}",
+      "resource_bundles": {
+        "KSPlayer_KSPlayer": [
+          "Sources/KSPlayer/Metal/*.metal"
+        ]
+      },
       "weak_frameworks": "MetalKit"
     },
     {
@@ -59,7 +64,7 @@
         "VideoToolbox"
       ],
       "dependencies": {
-        "FFmpeg": [
+        "FFmpegKit": [
 
         ],
         "KSPlayer/AVPlayer": [
@@ -79,12 +84,6 @@
       "dependencies": {
         "KSPlayer/AVPlayer": [
 
-        ]
-      },
-      "resource_bundles": {
-        "KSPlayer_KSPlayer": [
-          "Sources/KSPlayer/Core/Resources/*",
-          "Sources/KSPlayer/Metal/*.metal"
         ]
       }
     },

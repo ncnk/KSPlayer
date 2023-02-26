@@ -28,7 +28,7 @@ public protocol LoadingIndector {
 #if canImport(UIKit)
 extension UIActivityIndicatorView: LoadingIndector {}
 #endif
-
+// swiftlint:disable type_body_length file_length
 open class VideoPlayerView: PlayerView {
     private var delayItem: DispatchWorkItem?
     /// Gesture used to show / hide control view
@@ -143,6 +143,10 @@ open class VideoPlayerView: PlayerView {
         super.init(frame: frame)
         setupUIComponents()
         cancellable = playerLayer?.$isPipActive.assign(to: \.isSelected, on: toolBar.pipButton)
+
+        toolBar.onFocusUpdate = { [weak self] _ in
+            self?.autoFadeOutViewWithAnimation()
+        }
     }
 
     // MARK: - Action Response
@@ -150,66 +154,29 @@ open class VideoPlayerView: PlayerView {
     override open func onButtonPressed(type: PlayerButtonType, button: UIButton) {
         autoFadeOutViewWithAnimation()
         super.onButtonPressed(type: type, button: button)
-        if type == .srt {
-            srtControl.view.isHidden = false
-            isMaskShow = false
-        } else if type == .rate {
-            changePlaybackRate(button: button)
-        } else if type == .definition {
-            guard let resource, resource.definitions.count > 1 else { return }
-            let alertController = UIAlertController(title: NSLocalizedString("select video quality", comment: ""), message: nil, preferredStyle: preferredStyle())
-            for (index, definition) in resource.definitions.enumerated() {
-                let action = UIAlertAction(title: definition.definition, style: .default) { [weak self] _ in
-                    guard let self, index != self.currentDefinition else { return }
-                    self.change(definitionIndex: index)
-                }
-                action.setValue(index == currentDefinition, forKey: "checked")
-                alertController.addAction(action)
-            }
-            alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
-            viewController?.present(alertController, animated: true, completion: nil)
-        } else if type == .pictureInPicture {
+        if type == .pictureInPicture {
             if #available(tvOS 14.0, *) {
                 playerLayer?.isPipActive.toggle()
             }
-        } else if type == .audioSwitch || type == .videoSwitch {
-            guard let tracks = playerLayer?.player.tracks(mediaType: type == .audioSwitch ? .audio : .video) else {
-                return
-            }
-            let alertController = UIAlertController(title: NSLocalizedString(type == .audioSwitch ? "switch audio" : "switch video", comment: ""), message: nil, preferredStyle: preferredStyle())
-            for track in tracks {
-                let isEnabled = track.isEnabled
-                var title = track.name
-                if type == .videoSwitch {
-                    title += " \(track.naturalSize.width)x\(track.naturalSize.height)"
-                }
-                let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
-                    guard let self, !isEnabled else { return }
-                    self.playerLayer?.player.select(track: track)
-                }
-                action.setValue(isEnabled, forKey: "checked")
-                alertController.addAction(action)
-            }
-            alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
-            viewController?.present(alertController, animated: true, completion: nil)
         }
+        #if os(tvOS)
+        if type == .srt {
+            changeSrt(button: button)
+        } else if type == .rate {
+            changePlaybackRate(button: button)
+        } else if type == .definition {
+            changeDefinitions(button: button)
+        } else if type == .audioSwitch || type == .videoSwitch {
+            changeAudioVideo(type, button: button)
+        }
+        #elseif os(macOS)
+//        if let menu = button.menu, let event = NSApplication.shared.currentEvent {
+//            NSMenu.popUpContextMenu(menu, with: event, for: button)
+//        }
+        #endif
     }
 
-    open func changePlaybackRate(button: UIButton) {
-        let alertController = UIAlertController(title: NSLocalizedString("select speed", comment: ""), message: nil, preferredStyle: preferredStyle())
-        [0.75, 1.0, 1.25, 1.5, 2.0].forEach { rate in
-            let title = "\(rate)X"
-            let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
-                guard let self else { return }
-                button.setTitle(title, for: .normal)
-                self.playerLayer?.player.playbackRate = Float(rate)
-            }
-            action.setValue(title == button.title, forKey: "checked")
-            alertController.addAction(action)
-        }
-        alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
-        viewController?.present(alertController, animated: true, completion: nil)
-    }
+    // MARK: - setup UI
 
     open func setupUIComponents() {
         backgroundColor = .black
@@ -241,17 +208,21 @@ open class VideoPlayerView: PlayerView {
         replayButton.cornerRadius = 32
         replayButton.titleFont = .systemFont(ofSize: 16)
         replayButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        replayButton.setImage(KSOptions.image(named: "KSPlayer_play"), for: .normal)
-        replayButton.setImage(KSOptions.image(named: "KSPlayer_replay"), for: .selected)
         replayButton.addTarget(self, action: #selector(onButtonPressed(_:)), for: .primaryActionTriggered)
         replayButton.tag = PlayerButtonType.replay.rawValue
         lockButton.backgroundColor = UIColor.black.withAlphaComponent(0.5)
         lockButton.cornerRadius = 32
-        lockButton.setImage(KSOptions.image(named: "KSPlayer_unlocking"), for: .normal)
-        lockButton.setImage(KSOptions.image(named: "KSPlayer_autoRotationLock"), for: .selected)
         lockButton.tag = PlayerButtonType.lock.rawValue
         lockButton.addTarget(self, action: #selector(onButtonPressed(_:)), for: .primaryActionTriggered)
         lockButton.isHidden = true
+        if #available(macOS 11.0, *) {
+            replayButton.setImage(UIImage(systemName: "play.fill"), for: .normal)
+            replayButton.setImage(UIImage(systemName: "arrow.counterclockwise"), for: .selected)
+            lockButton.setImage(UIImage(systemName: "lock.open"), for: .normal)
+            lockButton.setImage(UIImage(systemName: "lock"), for: .selected)
+        }
+        lockButton.tintColor = .white
+        replayButton.tintColor = .white
         controllerView.addSubview(lockButton)
         controllerView.addSubview(topMaskView)
         controllerView.addSubview(bottomMaskView)
@@ -273,6 +244,9 @@ open class VideoPlayerView: PlayerView {
         doubleTapGesture.numberOfTapsRequired = 2
         tapGesture.require(toFail: doubleTapGesture)
         controllerView.addGestureRecognizer(doubleTapGesture)
+        #if canImport(UIKit)
+        addRemoteControllerGestures()
+        #endif
     }
 
     override open func player(layer: KSPlayerLayer, currentTime: TimeInterval, totalTime: TimeInterval) {
@@ -292,6 +266,10 @@ open class VideoPlayerView: PlayerView {
             embedSubtitleDataSouce = layer.player.subtitleDataSouce
             toolBar.videoSwitchButton.isHidden = layer.player.tracks(mediaType: .video).count < 2
             toolBar.audioSwitchButton.isHidden = layer.player.tracks(mediaType: .audio).count < 2
+            toolBar.srtButton.isHidden = srtControl.srtListCount == 0
+            if #available(iOS 14.0, tvOS 15.0, *) {
+                buildMenusForButtons()
+            }
         case .buffering:
             isPlayed = true
             replayButton.isHidden = true
@@ -357,9 +335,7 @@ open class VideoPlayerView: PlayerView {
         let asset = resource.definitions[currentDefinition]
         super.set(url: asset.url, options: asset.options)
         if shouldSeekTo > 0 {
-            Task {
-                await seek(time: shouldSeekTo)
-            }
+            seek(time: shouldSeekTo) { _ in }
         }
     }
 
@@ -445,23 +421,157 @@ open class VideoPlayerView: PlayerView {
             }
         }
     }
+}
 
-    #if canImport(UIKit)
-    override open func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-        guard let presse = presses.first else {
+// MARK: - Action Response
+
+extension VideoPlayerView {
+    @available(iOS 14.0, tvOS 15.0, *)
+    func buildMenusForButtons() {
+        let definitionsMenu = KSMenuBuilder.definitionsMenu(from: resource, selected: currentDefinition) { [weak self] selecrtedDefinition in
+            self?.change(definitionIndex: selecrtedDefinition)
+        }
+
+        let speedMenu = KSMenuBuilder.playbackRateMenu(Double(playerLayer?.player.playbackRate ?? 1)) { [weak self] selectedSpeed in
+            let currentRate = Double(self?.playerLayer?.player.playbackRate ?? 1)
+            guard selectedSpeed != currentRate else { return }
+            self?.playerLayer?.player.playbackRate = Float(selectedSpeed)
+        }
+
+        let videoTracks = playerLayer?.player.tracks(mediaType: .video) ?? []
+        let videoMenu = KSMenuBuilder.audioVideoChangeMenu(videoTracks.first(where: { $0.isEnabled }),
+                                                           availableTracks: videoTracks) { [weak self] track in
+            self?.playerLayer?.player.select(track: track)
+        }
+
+        let audioTracks = playerLayer?.player.tracks(mediaType: .audio) ?? []
+        let audioMenu = KSMenuBuilder.audioVideoChangeMenu(audioTracks.first(where: { $0.isEnabled }),
+                                                           availableTracks: audioTracks) { [weak self] track in
+            self?.playerLayer?.player.select(track: track)
+        }
+
+        let subtitles = srtControl.filterInfos { _ in true }
+        let srtMenu = KSMenuBuilder.srtChangeMenu(srtControl.view.selectedInfo,
+                                                  availableSubtitles: subtitles) { [weak self] selectedSrt in
+            guard self?.srtControl.view.selectedInfo?.subtitleID != selectedSrt?.subtitleID else { return }
+            self?.srtControl.view.selectedInfo = selectedSrt
+        }
+        #if !os(tvOS)
+        toolBar.definitionButton.menu = definitionsMenu
+        toolBar.videoSwitchButton.menu = videoMenu
+        toolBar.audioSwitchButton.menu = audioMenu
+        toolBar.playbackRateButton.menu = speedMenu
+        toolBar.srtButton.menu = srtMenu
+        #if os(iOS)
+        toolBar.definitionButton.showsMenuAsPrimaryAction = true
+        toolBar.videoSwitchButton.showsMenuAsPrimaryAction = true
+        toolBar.audioSwitchButton.showsMenuAsPrimaryAction = true
+        toolBar.playbackRateButton.showsMenuAsPrimaryAction = true
+        toolBar.srtButton.showsMenuAsPrimaryAction = true
+        #endif
+        #endif
+    }
+}
+
+// MARK: - playback rate, definitions, audio and video tracks change
+
+public extension VideoPlayerView {
+    private func changeAudioVideo(_ type: PlayerButtonType, button _: UIButton) {
+        guard let tracks = playerLayer?.player.tracks(mediaType: type == .audioSwitch ? .audio : .video) else {
             return
         }
-        switch presse.type {
-        case .playPause:
-            if let playerLayer, playerLayer.state.isPlaying {
-                pause()
-            } else {
-                play()
+        let alertController = UIAlertController(title: NSLocalizedString(type == .audioSwitch ? "switch audio" : "switch video", comment: ""), message: nil, preferredStyle: preferredStyle())
+        for track in tracks {
+            let isEnabled = track.isEnabled
+            var title = track.name
+            if type == .videoSwitch {
+                title += " \(track.naturalSize.width)x\(track.naturalSize.height)"
             }
-        default: super.pressesBegan(presses, with: event)
+            let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
+                guard let self, !isEnabled else { return }
+                self.playerLayer?.player.select(track: track)
+            }
+            alertController.addAction(action)
+            if isEnabled {
+                alertController.preferredAction = action
+                action.setValue(isEnabled, forKey: "checked")
+            }
         }
+        alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
+        viewController?.present(alertController, animated: true, completion: nil)
     }
-    #endif
+
+    private func changeDefinitions(button _: UIButton) {
+        guard let resource, resource.definitions.count > 1 else { return }
+        let alertController = UIAlertController(title: NSLocalizedString("select video quality", comment: ""), message: nil, preferredStyle: preferredStyle())
+        for (index, definition) in resource.definitions.enumerated() {
+            let action = UIAlertAction(title: definition.definition, style: .default) { [weak self] _ in
+                guard let self, index != self.currentDefinition else { return }
+                self.change(definitionIndex: index)
+            }
+            alertController.addAction(action)
+            if index == currentDefinition {
+                alertController.preferredAction = action
+                action.setValue(true, forKey: "checked")
+            }
+        }
+        alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
+        viewController?.present(alertController, animated: true, completion: nil)
+    }
+
+    private func changeSrt(button _: UIButton) {
+        let availableSubtitles = srtControl.filterInfos { _ in true }
+        guard availableSubtitles.count > 0 else { return }
+
+        let alertController = UIAlertController(title: NSLocalizedString("subtitle", comment: ""),
+                                                message: nil,
+                                                preferredStyle: preferredStyle())
+
+        let currentSub = srtControl.view.selectedInfo
+
+        let disableAction = UIAlertAction(title: NSLocalizedString("Disabled", comment: ""), style: .default) { [weak self] _ in
+            self?.srtControl.view.selectedInfo = nil
+        }
+        alertController.addAction(disableAction)
+        if currentSub == nil {
+            alertController.preferredAction = disableAction
+            disableAction.setValue(true, forKey: "checked")
+        }
+
+        availableSubtitles.enumerated().forEach { _, srt in
+            let action = UIAlertAction(title: srt.name, style: .default) { [weak self] _ in
+                self?.srtControl.view.selectedInfo = srt
+            }
+            alertController.addAction(action)
+            if currentSub?.subtitleID == srt.subtitleID {
+                alertController.preferredAction = action
+                action.setValue(true, forKey: "checked")
+            }
+        }
+
+        alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
+        viewController?.present(alertController, animated: true, completion: nil)
+    }
+
+    private func changePlaybackRate(button: UIButton) {
+        let alertController = UIAlertController(title: NSLocalizedString("select speed", comment: ""), message: nil, preferredStyle: preferredStyle())
+        [0.75, 1.0, 1.25, 1.5, 2.0].forEach { rate in
+            let title = "\(rate) x"
+            let action = UIAlertAction(title: title, style: .default) { [weak self] _ in
+                guard let self else { return }
+                button.setTitle(title, for: .normal)
+                self.playerLayer?.player.playbackRate = Float(rate)
+            }
+            alertController.addAction(action)
+
+            if Float(rate) == self.playerLayer?.player.playbackRate {
+                alertController.preferredAction = action
+                action.setValue(true, forKey: "checked")
+            }
+        }
+        alertController.addAction(UIAlertAction(title: NSLocalizedString("cancel", comment: ""), style: .cancel, handler: nil))
+        viewController?.present(alertController, animated: true, completion: nil)
+    }
 }
 
 // MARK: - seekToView
@@ -511,17 +621,24 @@ extension VideoPlayerView {
         }
     }
 
+    /// change during playback
+    public func updateSrt(_ options: KSSRTOptions) {
+        subtitleLabel.textColor = options.textColor
+        subtitleLabel.font = options.size.font
+        subtitleBackView.backgroundColor = options.bacgroundColor
+    }
+
     private func setupSrtControl() {
         subtitleLabel.numberOfLines = 0
         subtitleLabel.textAlignment = .center
-        subtitleLabel.textColor = .white
-        subtitleLabel.font = .systemFont(ofSize: 16)
+        subtitleLabel.textColor = KSOptions.srtOptions.textColor
+        subtitleLabel.font = KSOptions.srtOptions.size.font
         subtitleLabel.backingLayer?.shadowColor = UIColor.black.cgColor
         subtitleLabel.backingLayer?.shadowOffset = CGSize(width: 1.0, height: 1.0)
         subtitleLabel.backingLayer?.shadowOpacity = 0.9
         subtitleLabel.backingLayer?.shadowRadius = 1.0
         subtitleLabel.backingLayer?.shouldRasterize = true
-        subtitleBackView.backgroundColor = UIColor.clear
+        subtitleBackView.backgroundColor = KSOptions.srtOptions.bacgroundColor
         subtitleBackView.cornerRadius = 2
         subtitleBackView.addSubview(subtitleLabel)
         subtitleBackView.isHidden = true
@@ -581,32 +698,20 @@ extension VideoPlayerView {
     }
 
     private func addConstraint() {
-        toolBar.playButton.tintColor = .white
-        toolBar.playbackRateButton.tintColor = .white
-        toolBar.definitionButton.tintColor = .white
-        toolBar.timeSlider.setThumbImage(KSOptions.image(named: "KSPlayer_slider_thumb"), for: .normal)
-        toolBar.timeSlider.setThumbImage(KSOptions.image(named: "KSPlayer_slider_thumb_pressed"), for: .highlighted)
+        if #available(macOS 11.0, *) {
+            #if !targetEnvironment(macCatalyst)
+            toolBar.timeSlider.setThumbImage(UIImage(systemName: "circle.fill"), for: .normal)
+            #if os(macOS)
+            toolBar.timeSlider.setThumbImage(UIImage(systemName: "circle.fill"), for: .highlighted)
+            #else
+            toolBar.timeSlider.setThumbImage(UIImage(systemName: "circle.fill", withConfiguration: UIImage.SymbolConfiguration(scale: .large)), for: .highlighted)
+            #endif
+            #endif
+        }
         bottomMaskView.addSubview(toolBar.timeSlider)
-        toolBar.spacing = 10
-        toolBar.addArrangedSubview(toolBar.playButton)
-        toolBar.addArrangedSubview(toolBar.timeLabel)
-        toolBar.addArrangedSubview(toolBar.playbackRateButton)
-        toolBar.addArrangedSubview(toolBar.definitionButton)
-        toolBar.addArrangedSubview(toolBar.audioSwitchButton)
-        toolBar.addArrangedSubview(toolBar.videoSwitchButton)
-        toolBar.addArrangedSubview(toolBar.srtButton)
-        toolBar.addArrangedSubview(toolBar.pipButton)
         toolBar.audioSwitchButton.isHidden = true
         toolBar.videoSwitchButton.isHidden = true
-        if #available(tvOS 14.0, *) {
-            toolBar.pipButton.isHidden = !AVPictureInPictureController.isPictureInPictureSupported()
-        } else {
-            toolBar.pipButton.isHidden = true
-        }
-        toolBar.setCustomSpacing(20, after: toolBar.timeLabel)
-        toolBar.setCustomSpacing(20, after: toolBar.playbackRateButton)
-        toolBar.setCustomSpacing(20, after: toolBar.definitionButton)
-        toolBar.setCustomSpacing(20, after: toolBar.srtButton)
+        toolBar.pipButton.isHidden = true
         contentOverlayView.translatesAutoresizingMaskIntoConstraints = false
         controllerView.translatesAutoresizingMaskIntoConstraints = false
         toolBar.timeSlider.translatesAutoresizingMaskIntoConstraints = false
@@ -639,13 +744,6 @@ extension VideoPlayerView {
             bottomMaskView.leadingAnchor.constraint(equalTo: leadingAnchor),
             bottomMaskView.trailingAnchor.constraint(equalTo: trailingAnchor),
             bottomMaskView.heightAnchor.constraint(equalToConstant: 105),
-            toolBar.bottomAnchor.constraint(equalTo: bottomMaskView.safeBottomAnchor),
-            toolBar.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 10),
-            toolBar.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
-            toolBar.timeSlider.bottomAnchor.constraint(equalTo: toolBar.topAnchor),
-            toolBar.timeSlider.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 15),
-            toolBar.timeSlider.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
-            toolBar.timeSlider.heightAnchor.constraint(equalToConstant: 30),
             loadingIndector.centerYAnchor.constraint(equalTo: centerYAnchor),
             loadingIndector.centerXAnchor.constraint(equalTo: centerXAnchor),
             seekToView.centerYAnchor.constraint(equalTo: centerYAnchor),
@@ -657,6 +755,72 @@ extension VideoPlayerView {
             lockButton.leadingAnchor.constraint(equalTo: safeLeadingAnchor, constant: 22),
             lockButton.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+
+        configureToolBarConstraints()
+    }
+
+    private func configureToolBarConstraints() {
+        #if os(tvOS)
+        toolBar.spacing = 10
+        toolBar.addArrangedSubview(toolBar.playButton)
+        toolBar.addArrangedSubview(toolBar.timeLabel)
+        toolBar.addArrangedSubview(toolBar.playbackRateButton)
+        toolBar.addArrangedSubview(toolBar.definitionButton)
+        toolBar.addArrangedSubview(toolBar.audioSwitchButton)
+        toolBar.addArrangedSubview(toolBar.videoSwitchButton)
+        toolBar.addArrangedSubview(toolBar.srtButton)
+        toolBar.addArrangedSubview(toolBar.pipButton)
+
+        toolBar.setCustomSpacing(20, after: toolBar.timeLabel)
+        toolBar.setCustomSpacing(20, after: toolBar.playbackRateButton)
+        toolBar.setCustomSpacing(20, after: toolBar.definitionButton)
+        toolBar.setCustomSpacing(20, after: toolBar.srtButton)
+
+        NSLayoutConstraint.activate([
+            toolBar.bottomAnchor.constraint(equalTo: bottomMaskView.safeBottomAnchor),
+            toolBar.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 10),
+            toolBar.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
+            toolBar.timeSlider.bottomAnchor.constraint(equalTo: toolBar.topAnchor, constant: -8),
+            toolBar.timeSlider.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 15),
+            toolBar.timeSlider.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
+            toolBar.timeSlider.heightAnchor.constraint(equalToConstant: 16),
+        ])
+
+        #else
+
+        toolBar.playButton.tintColor = .white
+        toolBar.playbackRateButton.tintColor = .white
+        toolBar.definitionButton.tintColor = .white
+        toolBar.audioSwitchButton.tintColor = .white
+        toolBar.videoSwitchButton.tintColor = .white
+        toolBar.srtButton.tintColor = .white
+        toolBar.pipButton.tintColor = .white
+
+        toolBar.spacing = 10
+        toolBar.addArrangedSubview(toolBar.playButton)
+        toolBar.addArrangedSubview(toolBar.timeLabel)
+        toolBar.addArrangedSubview(toolBar.playbackRateButton)
+        toolBar.addArrangedSubview(toolBar.definitionButton)
+        toolBar.addArrangedSubview(toolBar.audioSwitchButton)
+        toolBar.addArrangedSubview(toolBar.videoSwitchButton)
+        toolBar.addArrangedSubview(toolBar.srtButton)
+        toolBar.addArrangedSubview(toolBar.pipButton)
+
+        toolBar.setCustomSpacing(20, after: toolBar.timeLabel)
+        toolBar.setCustomSpacing(20, after: toolBar.playbackRateButton)
+        toolBar.setCustomSpacing(20, after: toolBar.definitionButton)
+        toolBar.setCustomSpacing(20, after: toolBar.srtButton)
+
+        NSLayoutConstraint.activate([
+            toolBar.bottomAnchor.constraint(equalTo: bottomMaskView.safeBottomAnchor),
+            toolBar.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 10),
+            toolBar.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
+            toolBar.timeSlider.bottomAnchor.constraint(equalTo: toolBar.topAnchor),
+            toolBar.timeSlider.leadingAnchor.constraint(equalTo: bottomMaskView.safeLeadingAnchor, constant: 15),
+            toolBar.timeSlider.trailingAnchor.constraint(equalTo: bottomMaskView.safeTrailingAnchor, constant: -15),
+            toolBar.timeSlider.heightAnchor.constraint(equalToConstant: 30),
+        ])
+        #endif
     }
 
     private func preferredStyle() -> UIAlertController.Style {
@@ -666,6 +830,71 @@ extension VideoPlayerView {
         return .alert
         #endif
     }
+
+    #if canImport(UIKit)
+    private func addRemoteControllerGestures() {
+        let rightPressRecognizer = UITapGestureRecognizer()
+        rightPressRecognizer.addTarget(self, action: #selector(rightArrowButtonPressed(_:)))
+        rightPressRecognizer.allowedPressTypes = [NSNumber(value: UIPress.PressType.rightArrow.rawValue)]
+        addGestureRecognizer(rightPressRecognizer)
+
+        let leftPressRecognizer = UITapGestureRecognizer()
+        leftPressRecognizer.addTarget(self, action: #selector(leftArrowButtonPressed(_:)))
+        leftPressRecognizer.allowedPressTypes = [NSNumber(value: UIPress.PressType.leftArrow.rawValue)]
+        addGestureRecognizer(leftPressRecognizer)
+
+        let selectPressRecognizer = UITapGestureRecognizer()
+        selectPressRecognizer.addTarget(self, action: #selector(selectButtonPressed(_:)))
+        selectPressRecognizer.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
+        addGestureRecognizer(selectPressRecognizer)
+
+        let swipeUpRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(swipedUp(_:)))
+        swipeUpRecognizer.direction = .up
+        addGestureRecognizer(swipeUpRecognizer)
+
+        let swipeDownRecognizer = UISwipeGestureRecognizer(target: self, action: #selector(swipedDown(_:)))
+        swipeDownRecognizer.direction = .down
+        addGestureRecognizer(swipeDownRecognizer)
+    }
+
+    @objc
+    private func rightArrowButtonPressed(_: UITapGestureRecognizer) {
+        guard let playerLayer, playerLayer.state.isPlaying, toolBar.isSeekable else { return }
+        seek(time: toolBar.currentTime + 15) { _ in }
+    }
+
+    @objc
+    private func leftArrowButtonPressed(_: UITapGestureRecognizer) {
+        guard let playerLayer, playerLayer.state.isPlaying, toolBar.isSeekable else { return }
+        seek(time: toolBar.currentTime - 15) { _ in }
+    }
+
+    @objc
+    private func selectButtonPressed(_: UITapGestureRecognizer) {
+        guard toolBar.isSeekable else { return }
+        if let playerLayer, playerLayer.state.isPlaying {
+            pause()
+        } else {
+            play()
+        }
+    }
+
+    @objc
+    private func swipedUp(_: UISwipeGestureRecognizer) {
+        guard let playerLayer, playerLayer.state.isPlaying else { return }
+        if isMaskShow == false {
+            isMaskShow = true
+        }
+    }
+
+    @objc
+    private func swipedDown(_: UISwipeGestureRecognizer) {
+        guard let playerLayer, playerLayer.state.isPlaying else { return }
+        if isMaskShow == true {
+            isMaskShow = false
+        }
+    }
+    #endif
 }
 
 public enum KSPlayerTopBarShowCase {
@@ -691,6 +920,9 @@ public extension KSOptions {
     /// 播放内核选择策略 先使用firstPlayer，失败了自动切换到secondPlayer，播放内核有KSAVPlayer、KSMEPlayer两个选项
     /// 是否能后台播放视频
     static var canBackgroundPlay = false
+
+    /// Subtitle configuration
+    static var srtOptions: KSSRTOptions = .init()
 }
 
 extension UIView {

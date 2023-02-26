@@ -13,7 +13,6 @@ import UIKit
 #else
 import AppKit
 #endif
-import SwiftUI
 
 /**
  Player status emun
@@ -77,7 +76,7 @@ open class KSPlayerLayer: UIView {
         didSet {
             if #available(tvOS 14.0, *) {
                 if pipController == nil {
-                    pipController = player.pipController()
+                    pipController = player.pipController
                 }
                 if let pipController,
                    isPipActive != pipController.isPictureInPictureActive
@@ -154,7 +153,7 @@ open class KSPlayerLayer: UIView {
         }
     }
 
-    private lazy var timer: Timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+    private lazy var timer: Timer = .scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
         guard let self, self.player.isReadyToPlay else {
             return
         }
@@ -212,10 +211,13 @@ open class KSPlayerLayer: UIView {
     }
 
     deinit {
+        if #available(iOS 15.0, tvOS 15.0, macOS 12.0, *) {
+            player.pipController?.contentSource = nil
+        }
         NotificationCenter.default.removeObserver(self)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         #if os(tvOS)
-        UIApplication.shared.keyWindow?.avDisplayManager.preferredDisplayCriteria = nil
+        UIApplication.shared.windows.first?.avDisplayManager.preferredDisplayCriteria = nil
         #endif
     }
 
@@ -245,9 +247,11 @@ open class KSPlayerLayer: UIView {
         if player.isReadyToPlay {
             if state == .playedToTheEnd {
                 Task {
-                    let finished = await player.seek(time: 0)
-                    if finished {
-                        player.play()
+                    player.seek(time: 0) { [weak self] finished in
+                        guard let self else { return }
+                        if finished {
+                            self.player.play()
+                        }
                     }
                 }
             } else {
@@ -261,6 +265,9 @@ open class KSPlayerLayer: UIView {
         }
         state = player.loadState == .playable ? .bufferFinished : .buffering
         MPNowPlayingInfoCenter.default().playbackState = .playing
+        if #available(tvOS 14.0, *) {
+            KSPictureInPictureController.mute()
+        }
     }
 
     open func pause() {
@@ -283,27 +290,26 @@ open class KSPlayerLayer: UIView {
         UIApplication.shared.isIdleTimerDisabled = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         #if os(tvOS)
-        UIApplication.shared.keyWindow?.avDisplayManager.preferredDisplayCriteria = nil
+        UIApplication.shared.windows.first?.avDisplayManager.preferredDisplayCriteria = nil
         #endif
     }
 
-    open func seek(time: TimeInterval, autoPlay: Bool) async -> Bool {
+    open func seek(time: TimeInterval, autoPlay: Bool, completion: @escaping ((Bool) -> Void)) {
         if time.isInfinite || time.isNaN {
-            return false
-        }
-        if autoPlay {
-            state = .buffering
+            completion(false)
         }
         if player.isReadyToPlay {
-            let finished = await player.seek(time: time)
-            if finished, autoPlay {
-                play()
+            player.seek(time: time) { [weak self] finished in
+                guard let self else { return }
+                if finished, autoPlay {
+                    self.play()
+                }
+                completion(finished)
             }
-            return finished
         } else {
             isAutoPlay = autoPlay
             shouldSeekTo = time
-            return false
+            completion(false)
         }
     }
 
@@ -335,9 +341,9 @@ extension KSPlayerLayer: MediaPlayerDelegate {
         }
         if isAutoPlay {
             if shouldSeekTo > 0 {
-                Task {
-                    _ = await seek(time: shouldSeekTo, autoPlay: true)
-                    shouldSeekTo = 0
+                seek(time: shouldSeekTo, autoPlay: true) { [weak self] _ in
+                    guard let self else { return }
+                    self.shouldSeekTo = 0
                 }
             } else {
                 play()
@@ -375,7 +381,7 @@ extension KSPlayerLayer: MediaPlayerDelegate {
         guard state.isPlaying else { return }
         if player.loadState == .playable {
             if pipController == nil {
-                pipController = player.pipController()
+                pipController = player.pipController
             }
             state = .bufferFinished
         } else {
@@ -420,7 +426,7 @@ extension KSPlayerLayer: MediaPlayerDelegate {
 
 @available(tvOS 14.0, *)
 extension KSPlayerLayer: AVPictureInPictureControllerDelegate {
-    
+
     public func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
         delegate?.player(layer: self, pipWillStart: pictureInPictureController)
     }
@@ -435,13 +441,15 @@ extension KSPlayerLayer: AVPictureInPictureControllerDelegate {
 extension KSPlayerLayer {
     #if os(tvOS)
     private func setDisplayCriteria(track: MediaPlayerTrack) {
-        guard let displayManager = UIApplication.shared.keyWindow?.avDisplayManager,
+        guard let displayManager = UIApplication.shared.windows.first?.avDisplayManager,
               displayManager.isDisplayCriteriaMatchingEnabled,
               !displayManager.isDisplayModeSwitchInProgress
         else {
             return
         }
-        if let criteria = options.preferredDisplayCriteria(refreshRate: track.nominalFrameRate, videoDynamicRange: track.dynamicRange.rawValue) {
+        if let criteria = options.preferredDisplayCriteria(refreshRate: track.nominalFrameRate,
+                                                           videoDynamicRange: track.dynamicRange(options).rawValue)
+        {
             displayManager.preferredDisplayCriteria = criteria
         }
     }
@@ -497,9 +505,8 @@ extension KSPlayerLayer {
         }
     }
 
-    private func seek(time: TimeInterval) {
-        Task {
-            await self.seek(time: time, autoPlay: self.options.isSeekedAutoPlay)
+    func seek(time: TimeInterval) {
+        seek(time: time, autoPlay: options.isSeekedAutoPlay) { _ in
         }
     }
 
@@ -658,246 +665,6 @@ extension KSPlayerLayer {
         default:
             break
         }
-    }
-    #endif
-}
-
-public struct KSVideoPlayer {
-    public let coordinator: Coordinator
-    public let url: URL
-    public let options: KSOptions
-    public init(coordinator: Coordinator, url: URL, options: KSOptions) {
-        self.coordinator = coordinator
-        self.url = url
-        self.options = options
-    }
-}
-
-#if !canImport(UIKit)
-public typealias UIViewRepresentable = NSViewRepresentable
-#endif
-
-extension KSVideoPlayer: UIViewRepresentable {
-    public func makeCoordinator() -> Coordinator {
-        coordinator
-    }
-
-    #if canImport(UIKit)
-    public typealias UIViewType = KSPlayerLayer
-    public func makeUIView(context: Context) -> UIViewType {
-        let view = context.coordinator.makeView(url: url, options: options)
-        let swipeDown = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipeGestureAction(_:)))
-        swipeDown.direction = .down
-        view.addGestureRecognizer(swipeDown)
-        let swipeLeft = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipeGestureAction(_:)))
-        swipeLeft.direction = .left
-        view.addGestureRecognizer(swipeLeft)
-        let swipeRight = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipeGestureAction(_:)))
-        swipeRight.direction = .right
-        view.addGestureRecognizer(swipeRight)
-        let swipeUp = UISwipeGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.swipeGestureAction(_:)))
-        swipeUp.direction = .up
-        view.addGestureRecognizer(swipeUp)
-        return view
-    }
-
-    public func updateUIView(_ uiView: UIViewType, context: Context) {
-        updateView(uiView, context: context)
-    }
-
-    public static func dismantleUIView(_: UIViewType, coordinator: Coordinator) {
-        #if os(tvOS)
-        coordinator.playerLayer = nil
-        #endif
-    }
-    #else
-    public typealias NSViewType = KSPlayerLayer
-    public func makeNSView(context: Context) -> NSViewType {
-        context.coordinator.makeView(url: url, options: options)
-    }
-
-    public func updateNSView(_ uiView: NSViewType, context: Context) {
-        updateView(uiView, context: context)
-    }
-
-    public static func dismantleNSView(_: NSViewType, coordinator _: Coordinator) {}
-    #endif
-
-    private func updateView(_ view: KSPlayerLayer, context: Context) {
-        if view.url != url {
-            view.delegate = nil
-            view.set(url: url, options: options)
-            view.delegate = context.coordinator
-        }
-    }
-
-    public final class Coordinator: ObservableObject {
-        @Published public var isPlay: Bool = false {
-            didSet {
-                if isPlay != oldValue {
-                    isPlay ? playerLayer?.play() : playerLayer?.pause()
-                }
-            }
-        }
-
-        @Published public var isMuted: Bool = false {
-            didSet {
-                playerLayer?.player.isMuted = isMuted
-            }
-        }
-
-        @Published public var isScaleAspectFill = false {
-            didSet {
-                playerLayer?.player.contentMode = isScaleAspectFill ? .scaleAspectFill : .scaleAspectFit
-            }
-        }
-
-        @Published public var selectedSubtitleTrack: MediaPlayerTrack? {
-            didSet {
-                if let track = selectedSubtitleTrack {
-                    playerLayer?.player.select(track: track)
-                } else {
-                    oldValue?.setIsEnabled(false)
-                }
-            }
-        }
-
-        @Published public var isLoading = true
-        public var selectedAudioTrack: MediaPlayerTrack? {
-            didSet {
-                if oldValue?.trackID != selectedAudioTrack?.trackID {
-                    if let track = selectedAudioTrack {
-                        playerLayer?.player.select(track: track)
-                        playerLayer?.player.isMuted = false
-                    } else {
-                        playerLayer?.player.isMuted = true
-                    }
-                }
-            }
-        }
-
-        public var selectedVideoTrack: MediaPlayerTrack? {
-            didSet {
-                if oldValue?.trackID != selectedVideoTrack?.trackID {
-                    if let track = selectedVideoTrack {
-                        playerLayer?.player.select(track: track)
-                        playerLayer?.options.videoDisable = false
-                    } else {
-                        oldValue?.setIsEnabled(false)
-                        playerLayer?.options.videoDisable = true
-                    }
-                }
-            }
-        }
-
-        // 在SplitView模式下，第二次进入会先调用makeUIView。然后在调用之前的dismantleUIView.所以如果进入的是同一个View的话，就会导致playerLayer被清空了。最准确的方式是在onDisappear清空playerLayer
-        public var playerLayer: KSPlayerLayer?
-        public var audioTracks = [MediaPlayerTrack]()
-        public var subtitleTracks = [MediaPlayerTrack]()
-        public var videoTracks = [MediaPlayerTrack]()
-        fileprivate var onPlay: ((TimeInterval, TimeInterval) -> Void)?
-        fileprivate var onFinish: ((KSPlayerLayer, Error?) -> Void)?
-        fileprivate var onStateChanged: ((KSPlayerLayer, KSPlayerState) -> Void)?
-        fileprivate var onBufferChanged: ((Int, TimeInterval) -> Void)?
-        #if canImport(UIKit)
-        fileprivate var onSwipe: ((UISwipeGestureRecognizer.Direction) -> Void)?
-        @objc fileprivate func swipeGestureAction(_ recognizer: UISwipeGestureRecognizer) {
-            onSwipe?(recognizer.direction)
-        }
-        #endif
-
-        public init() {}
-
-        public func makeView(url: URL, options: KSOptions) -> KSPlayerLayer {
-            if let playerLayer {
-                playerLayer.set(url: url, options: options)
-                playerLayer.delegate = self
-                isPlay = options.isAutoPlay
-                return playerLayer
-            } else {
-                let playerLayer = KSPlayerLayer(url: url, options: options)
-                playerLayer.delegate = self
-                self.playerLayer = playerLayer
-                isPlay = options.isAutoPlay
-                return playerLayer
-            }
-        }
-
-        public func skip(interval: Int) {
-            if let playerLayer {
-                seek(time: playerLayer.player.currentPlaybackTime + TimeInterval(interval))
-            }
-        }
-
-        public func seek(time: TimeInterval) {
-            Task {
-                await playerLayer?.seek(time: TimeInterval(time), autoPlay: true)
-            }
-        }
-    }
-}
-
-extension KSVideoPlayer.Coordinator: KSPlayerLayerDelegate {
-    public func player(layer: KSPlayerLayer, state: KSPlayerState) {
-        if state == .readyToPlay {
-            subtitleTracks = layer.player.tracks(mediaType: .subtitle)
-            videoTracks = layer.player.tracks(mediaType: .video)
-            audioTracks = layer.player.tracks(mediaType: .audio)
-        } else {
-            isLoading = state == .buffering
-            if state != .prepareToPlay {
-                isPlay = state.isPlaying
-            }
-        }
-        onStateChanged?(layer, state)
-    }
-
-    public func player(layer _: KSPlayerLayer, currentTime: TimeInterval, totalTime: TimeInterval) {
-        onPlay?(currentTime, totalTime)
-    }
-
-    public func player(layer: KSPlayerLayer, finish error: Error?) {
-        onFinish?(layer, error)
-    }
-
-    public func player(layer _: KSPlayerLayer, bufferedCount: Int, consumeTime: TimeInterval) {
-        onBufferChanged?(bufferedCount, consumeTime)
-    }
-}
-
-extension KSVideoPlayer: Equatable {
-    public static func == (lhs: KSVideoPlayer, rhs: KSVideoPlayer) -> Bool {
-        lhs.url == rhs.url
-    }
-}
-
-public extension KSVideoPlayer {
-    func onBufferChanged(_ handler: @escaping (Int, TimeInterval) -> Void) -> Self {
-        coordinator.onBufferChanged = handler
-        return self
-    }
-
-    /// Playing to the end.
-    func onFinish(_ handler: @escaping (KSPlayerLayer, Error?) -> Void) -> Self {
-        coordinator.onFinish = handler
-        return self
-    }
-
-    func onPlay(_ handler: @escaping (TimeInterval, TimeInterval) -> Void) -> Self {
-        coordinator.onPlay = handler
-        return self
-    }
-
-    /// Playback status changes, such as from play to pause.
-    func onStateChanged(_ handler: @escaping (KSPlayerLayer, KSPlayerState) -> Void) -> Self {
-        coordinator.onStateChanged = handler
-        return self
-    }
-
-    #if canImport(UIKit)
-    func onSwipe(_ handler: @escaping (UISwipeGestureRecognizer.Direction) -> Void) -> Self {
-        coordinator.onSwipe = handler
-        return self
     }
     #endif
 }

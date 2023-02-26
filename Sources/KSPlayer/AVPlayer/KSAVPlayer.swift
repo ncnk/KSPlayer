@@ -84,7 +84,7 @@ public class KSAVPlayer {
     private var likelyToKeepUpObservation: NSKeyValueObservation?
     private var bufferFullObservation: NSKeyValueObservation?
     private var itemObservation: NSKeyValueObservation?
-    private var isReadyForDisplayObservation: NSKeyValueObservation?
+//    private var isReadyForDisplayObservation: NSKeyValueObservation?  // TODO: ncnk 是否删除
     private var loopCountObservation: NSKeyValueObservation?
     private var loopStatusObservation: NSKeyValueObservation?
     private var error: Error? {
@@ -95,9 +95,17 @@ public class KSAVPlayer {
         }
     }
 
+    private lazy var _pipController: Any? = {
+        if #available(tvOS 14.0, *) {
+            return KSPictureInPictureController(playerLayer: playerView.playerLayer)
+        } else {
+            return nil
+        }
+    }()
+
     @available(tvOS 14.0, *)
-    public func pipController() -> AVPictureInPictureController? {
-        AVPictureInPictureController(playerLayer: playerView.playerLayer)
+    public var pipController: KSPictureInPictureController? {
+        _pipController as? KSPictureInPictureController
     }
 
     @available(macOS 12.0, iOS 15.0, tvOS 15.0, *)
@@ -172,11 +180,11 @@ public class KSAVPlayer {
             guard let self else { return }
             self.observer(playerItem: player.currentItem)
         }
-        isReadyForDisplayObservation = playerLayer.observe(\.isReadyForDisplay, changeHandler: { [weak self] player, _ in
-            guard let self else { return }
-            self.loadState = .playable
-            self.isReadyToPlay = true
-        })
+//        isReadyForDisplayObservation = playerLayer.observe(\.isReadyForDisplay, changeHandler: { [weak self] player, _ in
+//            guard let self else { return }
+//            self.loadState = .playable
+//            self.isReadyToPlay = true
+//        })
     }
 }
 
@@ -202,7 +210,7 @@ extension KSAVPlayer {
         }
         delegate?.finish(player: self, error: playError)
     }
-    
+
     private func isAirplaying() -> Bool {
         var isAirplaying = false
         let audioSession = AVAudioSession.sharedInstance()
@@ -220,7 +228,6 @@ extension KSAVPlayer {
     private func updateStatus(item: AVPlayerItem) {
         if item.status == .readyToPlay {
             options.findTime = CACurrentMediaTime()
-
             if isAirplaying() {
                 duration = item.duration.seconds
                 isReadyToPlay = true
@@ -381,8 +388,7 @@ extension KSAVPlayer: MediaPlayerProtocol {
             }
         }
         set {
-            Task {
-                _ = await seek(time: newValue)
+            seek(time: newValue) { _ in
             }
         }
     }
@@ -405,7 +411,7 @@ extension KSAVPlayer: MediaPlayerProtocol {
         }
     }
 
-    public func seek(time: TimeInterval) async -> Bool {
+    public func seek(time: TimeInterval, completion: @escaping ((Bool) -> Void)) {
         let time = max(time, 0)
         shouldSeekTo = time
         playbackState = .seeking
@@ -413,9 +419,12 @@ extension KSAVPlayer: MediaPlayerProtocol {
             self?.bufferingProgress = 0
         }
         let tolerance: CMTime = options.isAccurateSeek ? .zero : .positiveInfinity
-        let finished = await player.seek(to: CMTime(seconds: time, preferredTimescale: Int32(NSEC_PER_SEC)), toleranceBefore: tolerance, toleranceAfter: tolerance)
-        shouldSeekTo = 0
-        return finished
+        player.seek(to: CMTime(seconds: time), toleranceBefore: tolerance, toleranceAfter: tolerance) {
+            [weak self] finished in
+            guard let self else { return }
+            self.shouldSeekTo = 0
+            completion(finished)
+        }
     }
 
     public func prepareToPlay() {

@@ -27,6 +27,7 @@ extension FFmpegAssetTrack: SubtitleInfo {
 
 extension FFmpegAssetTrack: KSSubtitleProtocol {
     public func search(for time: TimeInterval) -> SubtitlePart? {
+        let time = time + startTime
         if isImageSubtitle {
             return subtitle?.outputRenderQueue.pop { item -> Bool in
                 item.part < time || item.part == time
@@ -39,12 +40,12 @@ extension FFmpegAssetTrack: KSSubtitleProtocol {
     }
 }
 
-extension MEPlayerItem: SubtitleDataSouce {
-    var infos: [SubtitleInfo]? {
-        assetTracks.filter { $0.mediaType == .subtitle }
+extension KSMEPlayer: SubtitleDataSouce {
+    public var infos: [SubtitleInfo]? {
+        tracks(mediaType: .subtitle) as? [FFmpegAssetTrack]
     }
 
-    func searchSubtitle(name _: String, completion: @escaping (() -> Void)) {
+    public func searchSubtitle(name _: String, completion: @escaping (() -> Void)) {
         completion()
     }
 }

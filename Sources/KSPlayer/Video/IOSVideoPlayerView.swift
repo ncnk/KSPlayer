@@ -50,21 +50,25 @@ open class IOSVideoPlayerView: VideoPlayerView {
         maskImageView.contentMode = .scaleAspectFit
         toolBar.addArrangedSubview(landscapeButton)
         landscapeButton.tag = PlayerButtonType.landscape.rawValue
-        landscapeButton.setImage(KSOptions.image(named: "KSPlayer_fullscreen"), for: .normal)
-        landscapeButton.setImage(KSOptions.image(named: "KSPlayer_portialscreen"), for: .selected)
+        landscapeButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right"), for: .normal)
+        landscapeButton.setImage(UIImage(systemName: "arrow.down.right.and.arrow.up.left"), for: .selected)
         landscapeButton.addTarget(self, action: #selector(onButtonPressed(_:)), for: .touchUpInside)
+        landscapeButton.tintColor = .white
         backButton.tag = PlayerButtonType.back.rawValue
-        backButton.setImage(KSOptions.image(named: "KSPlayer_back"), for: .normal)
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
         backButton.addTarget(self, action: #selector(onButtonPressed(_:)), for: .touchUpInside)
+        backButton.tintColor = .white
         navigationBar.insertArrangedSubview(backButton, at: 0)
         routeButton.isHidden = true
         navigationBar.addArrangedSubview(routeButton)
         addSubview(airplayStatusView)
         volumeView.move(to: self)
+        #if !targetEnvironment(macCatalyst)
         let tmp = MPVolumeView(frame: CGRect(x: -100, y: -100, width: 0, height: 0))
         if let first = (tmp.subviews.first { $0 is UISlider }) as? UISlider {
             volumeViewSlider = first
         }
+        #endif
         routeButton.translatesAutoresizingMaskIntoConstraints = false
         backButton.translatesAutoresizingMaskIntoConstraints = false
         landscapeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -302,7 +306,7 @@ extension IOSVideoPlayerView {
 public class AirplayStatusView: UIView {
     override public init(frame: CGRect) {
         super.init(frame: frame)
-        let airplayicon = UIImageView(image: KSOptions.image(named: "airplayicon_play"))
+        let airplayicon = UIImageView(image: UIImage(systemName: "airplayvideo"))
         addSubview(airplayicon)
         let airplaymessage = UILabel()
         airplaymessage.backgroundColor = .clear
